@@ -25,6 +25,9 @@ using namespace logid;
 using namespace logid::features;
 using namespace logid::backend;
 
+// Bind the hires-scroll backend, profile config, and IPC endpoint.
+// The wrapper needs both the hardware mode bits and the user config so it can
+// keep the two synchronized while processing scroll events.
 HiresScroll::HiresScroll(Device* dev) :
         DeviceFeature(dev),
         _config(dev->activeProfile().hiresscroll), _mode(0),
@@ -46,6 +49,9 @@ HiresScroll::HiresScroll(Device* dev) :
     _ipc_interface = dev->ipcNode()->make_interface<IPC>(this);
 }
 
+// Build the mode mask and gesture objects from the stored config.
+// The mask records which hardware bits we are allowed to change; the mode stores
+// the values the profile requested for those bits.
 void HiresScroll::_makeConfig() {
     auto& config = _config.get();
     _mode = 0;
@@ -82,11 +88,14 @@ void HiresScroll::_makeConfig() {
     }
 }
 
+// Reapply only the mode bits requested by the profile.
 void HiresScroll::configure() {
     std::shared_lock lock(_config_mutex);
     _configure();
 }
 
+// Merge requested mode bits without disturbing unsupported bits.
+// Any bits outside the mask are left alone so we do not clobber firmware state.
 void HiresScroll::_configure() {
     auto mode = _hires_scroll->getMode();
     mode &= ~_mask;
@@ -94,6 +103,7 @@ void HiresScroll::_configure() {
     _hires_scroll->setMode(mode);
 }
 
+// Register the wheel movement event handler once.
 void HiresScroll::listen() {
     std::shared_lock lock(_config_mutex);
     if (_ev_handler.empty()) {
@@ -111,6 +121,7 @@ void HiresScroll::listen() {
     }
 }
 
+// Swap in a new profile and rebuild the gestures.
 void HiresScroll::setProfile(config::Profile& profile) {
     std::unique_lock lock(_config_mutex);
 
@@ -120,14 +131,17 @@ void HiresScroll::setProfile(config::Profile& profile) {
     _makeConfig();
 }
 
+// Read the current hardware mode.
 uint8_t HiresScroll::getMode() {
     return _hires_scroll->getMode();
 }
 
+// Write a new hardware mode directly.
 void HiresScroll::setMode(uint8_t mode) {
     _hires_scroll->setMode(mode);
 }
 
+// Build one scroll-direction gesture and make it wheel-compatible.
 void HiresScroll::_makeGesture(std::shared_ptr<actions::Gesture>& gesture,
                                std::optional<config::Gesture>& config,
                                const std::string& direction) {
@@ -141,6 +155,7 @@ void HiresScroll::_makeGesture(std::shared_ptr<actions::Gesture>& gesture,
     }
 }
 
+// Tune axis gestures to the device's hires multiplier.
 void HiresScroll::_fixGesture(const std::shared_ptr<actions::Gesture>& gesture) {
     try {
         auto axis = std::dynamic_pointer_cast<actions::AxisGesture>(gesture);
@@ -151,6 +166,8 @@ void HiresScroll::_fixGesture(const std::shared_ptr<actions::Gesture>& gesture) 
         gesture->press(true);
 }
 
+// Turn wheel events into up/down gesture presses and movement.
+// The wrapper also restarts gestures if the user pauses long enough between scrolls.
 void HiresScroll::_handleScroll(hidpp20::HiresScroll::WheelStatus event) {
     std::shared_lock lock(_config_mutex);
     auto now = std::chrono::system_clock::now();
@@ -192,6 +209,7 @@ void HiresScroll::_handleScroll(hidpp20::HiresScroll::WheelStatus event) {
     _last_scroll = now;
 }
 
+// Publish hires-scroll controls through IPC.
 HiresScroll::IPC::IPC(HiresScroll* parent) : ipcgull::interface(
         SERVICE_ROOT_NAME ".HiresScroll", {
                 {"GetConfig", {this, &IPC::getConfig, {"hires", "invert", "target"}}},
@@ -203,6 +221,7 @@ HiresScroll::IPC::IPC(HiresScroll* parent) : ipcgull::interface(
         }, {}, {}), _parent(*parent) {
 }
 
+// Return the hires, invert, and target flags.
 std::tuple<bool, bool, bool> HiresScroll::IPC::getConfig() const {
     std::shared_lock lock(_parent._config_mutex);
 
@@ -224,6 +243,7 @@ std::tuple<bool, bool, bool> HiresScroll::IPC::getConfig() const {
     }
 }
 
+// Ensure the profile has a mutable hires-scroll config object.
 config::HiresScroll& HiresScroll::IPC::_parentConfig() {
     auto& config = _parent._config.get();
     if (!config.has_value()) {
@@ -238,6 +258,7 @@ config::HiresScroll& HiresScroll::IPC::_parentConfig() {
     return std::get<config::HiresScroll>(config.value());
 }
 
+// Update hires mode and apply it immediately.
 void HiresScroll::IPC::setHires(bool hires) {
     std::unique_lock lock(_parent._config_mutex);
     _parentConfig().hires = hires;
@@ -251,6 +272,7 @@ void HiresScroll::IPC::setHires(bool hires) {
     _parent._configure();
 }
 
+// Update inversion and apply it immediately.
 void HiresScroll::IPC::setInvert(bool invert) {
     std::unique_lock lock(_parent._config_mutex);
     _parentConfig().invert = invert;
@@ -264,6 +286,7 @@ void HiresScroll::IPC::setInvert(bool invert) {
     _parent._configure();
 }
 
+// Update target mode and apply it immediately.
 void HiresScroll::IPC::setTarget(bool target) {
     std::unique_lock lock(_parent._config_mutex);
     _parentConfig().target = target;
@@ -277,6 +300,7 @@ void HiresScroll::IPC::setTarget(bool target) {
     _parent._configure();
 }
 
+// Replace the upward scroll mapping.
 void HiresScroll::IPC::setUp(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 
@@ -297,6 +321,7 @@ void HiresScroll::IPC::setUp(const std::string& type) {
     }
 }
 
+// Replace the downward scroll mapping.
 void HiresScroll::IPC::setDown(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 

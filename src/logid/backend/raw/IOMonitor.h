@@ -27,6 +27,7 @@
 #include <thread>
 
 namespace logid::backend::raw {
+    // Per-fd callback bundle used by the epoll loop.
     struct IOHandler {
         std::function<void()> read;
         std::function<void()> hangup;
@@ -37,6 +38,7 @@ namespace logid::backend::raw {
                   std::function<void()> err);
     };
 
+    // epoll-backed dispatcher for raw-device reads and errors.
     class IOMonitor {
     public:
         IOMonitor();
@@ -51,8 +53,10 @@ namespace logid::backend::raw {
 
         ~IOMonitor() noexcept;
 
+        // Start monitoring one file descriptor.
         void add(int fd, IOHandler handler);
 
+        // Stop monitoring one file descriptor.
         void remove(int fd) noexcept;
     private:
         void _listen(); // This is a blocking call

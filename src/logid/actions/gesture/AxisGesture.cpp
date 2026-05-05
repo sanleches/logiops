@@ -23,8 +23,10 @@
 
 using namespace logid::actions;
 
+// IPC name used when this gesture is exported through D-Bus.
 const char* AxisGesture::interface_name = "Axis";
 
+// Bind the gesture to axis movement and the virtual input device.
 AxisGesture::AxisGesture(Device* device, config::AxisGesture& config,
                          const std::shared_ptr<ipcgull::node>& parent) :
         Gesture(device, parent, interface_name, {
@@ -55,6 +57,7 @@ AxisGesture::AxisGesture(Device* device, config::AxisGesture& config,
         _device->virtualInput()->registerAxis(_input_axis.value());
 }
 
+// Initialize threshold and internal accumulation when the gesture starts.
 void AxisGesture::press(bool init_threshold) {
     std::shared_lock lock(_config_mutex);
     if (init_threshold) {
@@ -66,11 +69,13 @@ void AxisGesture::press(bool init_threshold) {
     _hires_remainder = 0;
 }
 
+// Axis gestures do not fire on release.
 void AxisGesture::release(bool primary) {
     // Do nothing
     (void) primary; // Suppress unused warning
 }
 
+// Convert movement into virtual axis events once the threshold is passed.
 void AxisGesture::move(int16_t axis) {
     std::shared_lock lock(_config_mutex);
     if (!_input_axis.has_value())
@@ -91,7 +96,7 @@ void AxisGesture::move(int16_t axis) {
             move *= -_config.axis_multiplier.value_or(1);
         else
             move *= _config.axis_multiplier.value_or(1);
-        // Handle hi-res multiplier
+        // Scale the movement using the wheel's high-resolution multiplier.
         move *= _multiplier;
 
         double move_floor = floor(move);
@@ -125,15 +130,18 @@ void AxisGesture::move(int16_t axis) {
     _axis = new_axis;
 }
 
+// Report whether the accumulated movement has crossed the configured threshold.
 bool AxisGesture::metThreshold() const {
     std::shared_lock lock(_config_mutex);
     return _axis >= _config.threshold.value_or(defaults::gesture_threshold);
 }
 
+// Axis gestures are compatible with wheel-style inputs.
 bool AxisGesture::wheelCompatibility() const {
     return true;
 }
 
+// Update the multiplier used for high-resolution wheels.
 void AxisGesture::setHiresMultiplier(double multiplier) {
     _hires_multiplier = multiplier;
     if (_input_axis.has_value()) {
@@ -142,6 +150,7 @@ void AxisGesture::setHiresMultiplier(double multiplier) {
     }
 }
 
+// Return the current axis, multiplier, and threshold settings.
 std::tuple<std::string, double, int> AxisGesture::getConfig() const {
     std::shared_lock lock(_config_mutex);
     std::string axis;
@@ -156,6 +165,7 @@ std::tuple<std::string, double, int> AxisGesture::getConfig() const {
     return {axis, _config.axis_multiplier.value_or(1), _config.threshold.value_or(0)};
 }
 
+// Replace the target axis and register it on the virtual input device.
 void AxisGesture::setAxis(const std::string& axis) {
     std::unique_lock lock(_config_mutex);
     if (axis.empty()) {
@@ -169,6 +179,7 @@ void AxisGesture::setAxis(const std::string& axis) {
     setHiresMultiplier(_hires_multiplier);
 }
 
+// Replace the scale factor applied to outgoing movement.
 void AxisGesture::setMultiplier(double multiplier) {
     std::unique_lock lock(_config_mutex);
     _config.axis_multiplier = multiplier;
@@ -176,6 +187,7 @@ void AxisGesture::setMultiplier(double multiplier) {
     setHiresMultiplier(_hires_multiplier);
 }
 
+// Replace the threshold used before movement is emitted.
 void AxisGesture::setThreshold(int threshold) {
     std::unique_lock lock(_config_mutex);
     if (threshold == 0)

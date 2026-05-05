@@ -29,6 +29,7 @@
 template <class T>
 class EventHandlerLock;
 
+// Thread-safe handler registry used by device backends for callback dispatch.
 template <class T>
 class EventHandlerList {
 public:
@@ -39,6 +40,7 @@ private:
     std::shared_mutex mutex;
     std::shared_mutex add_mutex;
 
+    // Remove handlers that were marked inactive while callbacks were running.
     void cleanup() {
         std::unique_lock lock(mutex, std::try_to_lock);
         if (lock.owns_lock()) {
@@ -53,12 +55,14 @@ private:
         }
     }
 public:
+    // Register a new callback and keep it alive through the returned lock.
     iterator_t add(typename T::EventHandler handler) {
         std::unique_lock add_lock(add_mutex);
         list.emplace_front(std::move(handler), true);
         return list.begin();
     }
 
+    // Remove a callback or mark it for cleanup if the list is currently busy.
     void remove(iterator_t iterator) {
         std::unique_lock lock(mutex, std::try_to_lock);
         if (lock.owns_lock()) {
@@ -70,6 +74,7 @@ public:
     }
 
     template <typename Arg>
+    // Run every matching callback for the supplied event payload.
     void run_all(Arg arg) {
         cleanup();
         std::shared_lock lock(mutex);
@@ -85,6 +90,7 @@ public:
     }
 };
 
+// RAII token that unregisters a callback when the caller drops it.
 template <class T>
 class EventHandlerLock {
     typedef EventHandlerList<T> list_t;

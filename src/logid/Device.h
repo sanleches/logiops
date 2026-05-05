@@ -37,6 +37,8 @@ namespace logid {
 
     class DeviceNickname {
     public:
+        // Reserve a short numeric identity for the lifetime of a device node so
+        // its IPC path is compact and does not depend on the filesystem path.
         explicit DeviceNickname(const std::shared_ptr<DeviceManager>& manager);
 
         DeviceNickname() = delete;
@@ -56,6 +58,8 @@ namespace logid {
      * Currently, the logid::Device class has a hardcoded requirement
      * for an HID++ 2.0 device.
      */
+    // Represents one logical Logitech device, its active profile, and the
+    // feature wrappers that translate hardware events into actions.
     class Device : public ipcgull::object {
     public:
         std::string name();
@@ -99,12 +103,15 @@ namespace logid {
 
         void reset();
 
+        // Access the daemon-wide virtual input device. Actions write synthesized
+        // key and motion events here instead of talking to the real mouse directly.
         [[nodiscard]] std::shared_ptr<InputDevice> virtualInput() const;
 
         [[nodiscard]] std::shared_ptr<ipcgull::node> ipcNode() const;
 
         template<typename T>
         std::shared_ptr<T> getFeature(const std::string& name) {
+            // Expose a typed feature handle only when the feature exists and matches.
             auto it = _features.find(name);
             if (it == _features.end())
                 return nullptr;
@@ -132,13 +139,18 @@ namespace logid {
         Device(Receiver* receiver, backend::hidpp::DeviceIndex index,
                const std::shared_ptr<DeviceManager>& manager);
 
+        // Ensure a per-device config exists and normalize older config shapes.
+        // Older configs stored a single profile directly, so this migrates them
+        // into the newer multi-profile layout the first time a device is seen.
         static config::Device& _getConfig(
                 const std::shared_ptr<DeviceManager>& manager,
                 const std::string& name);
 
         void _init();
 
-        /* Adds a feature without calling an error if unsupported */
+        // Add a feature only when the device supports it.
+        // Unsupported features are skipped quietly because different Logitech
+        // models expose different HID++ feature sets.
         template<typename T>
         void _addFeature(std::string name) {
             try {
@@ -170,6 +182,7 @@ namespace logid {
         private:
             Device& _device;
         public:
+            // IPC facade for profile management and device status updates.
             explicit IPC(Device* device);
 
             void notifyStatus() const;

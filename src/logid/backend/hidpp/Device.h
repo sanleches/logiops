@@ -36,6 +36,9 @@ namespace logid::backend::hidpp10 {
 }
 
 namespace logid::backend::hidpp {
+    // Shared HID++ device abstraction used by both 1.0 and 2.0 backends.
+    // It sits on top of RawDevice and knows how to filter reports and wait for
+    // replies to device-specific HID++ commands.
     struct DeviceConnectionEvent;
 
     template<typename T>
@@ -58,11 +61,15 @@ namespace logid::backend::hidpp {
         class _deviceWrapper;
 
     public:
+        // Report callbacks decide whether to handle a report and what to do with it.
+        // The condition decides if the callback should run; the callback does the work.
         struct EventHandler {
             std::function<bool(Report&)> condition;
             std::function<void(Report&)> callback;
         };
 
+        // Raised when a raw device cannot be promoted to a usable HID++ device.
+        // Callers use the reason code to decide whether to retry, ignore, or fail.
         class InvalidDevice : std::exception {
         public:
             enum Reason {
@@ -82,6 +89,8 @@ namespace logid::backend::hidpp {
             Reason _reason;
         };
 
+        // Basic identity and I/O accessors.
+        // These are the values higher layers use to label and identify the device.
         [[nodiscard]] const std::string& devicePath() const;
 
         [[nodiscard]] DeviceIndex deviceIndex() const;
@@ -92,10 +101,17 @@ namespace logid::backend::hidpp {
 
         [[nodiscard]] uint16_t pid() const;
 
+        // Register a callback that receives each processed report.
+        // This runs after the HID++ layer has filtered out replies meant for
+        // the caller, so handlers mostly see real device events.
         EventHandlerLock<Device> addEventHandler(EventHandler handler);
 
+        // Send a report and wait for the matching response.
+        // This is the normal HID++ request/response path.
         virtual Report sendReport(const Report& report);
 
+        // Send a report without waiting for a response.
+        // Some commands intentionally disconnect the device or never reply.
         virtual void sendReportNoACK(const Report& report);
 
         void handleEvent(Report& report);
@@ -121,7 +137,8 @@ namespace logid::backend::hidpp {
         Device(const std::shared_ptr<hidpp10::Receiver>& receiver,
                DeviceIndex index, double timeout);
 
-        // Returns whether the report is a response
+        // Return true if this report should be treated as a reply to a request
+        // we recently sent.
         virtual bool responseReport(const Report& report);
 
         bool isStable20();

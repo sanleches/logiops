@@ -20,15 +20,18 @@
 using namespace logid::backend::hidpp20;
 
 [[maybe_unused]]
+// Bind the feature table reader to the device.
 FeatureSet::FeatureSet(Device* device) : Feature(device, ID) {
 }
 
+// Ask the device how many features it exposes.
 uint8_t FeatureSet::getFeatureCount() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetFeatureCount, params);
     return response[0];
 }
 
+// Read one feature ID from the device's feature table.
 uint16_t FeatureSet::getFeature(uint8_t feature_index) {
     std::vector<uint8_t> params(1);
     params[0] = feature_index;
@@ -39,6 +42,7 @@ uint16_t FeatureSet::getFeature(uint8_t feature_index) {
     return feature_id;
 }
 
+// Walk the full feature table and return every advertised ID.
 [[maybe_unused]]
 std::map<uint8_t, uint16_t> FeatureSet::getFeatures() {
     uint8_t feature_count = getFeatureCount();

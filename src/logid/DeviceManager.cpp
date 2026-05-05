@@ -27,6 +27,8 @@
 using namespace logid;
 using namespace logid::backend;
 
+// Connect the raw device monitor, virtual input device, and IPC tree into one
+// object that owns all device-facing runtime state.
 DeviceManager::DeviceManager(std::shared_ptr<Configuration> config,
                              std::shared_ptr<InputDevice> virtual_input,
                              std::shared_ptr<ipcgull::server> server) :
@@ -64,7 +66,8 @@ void DeviceManager::addDevice(std::string path) {
     bool defaultExists = true;
     bool isReceiver = false;
 
-    // Check if device is ignored before continuing
+    // Open just enough of the device to read its product ID first. This lets us
+    // skip ignored devices before paying the cost of full HID++ initialization.
     {
         auto raw_dev = raw::RawDevice::make(path, self<DeviceManager>().lock());
         if (config()->ignore.has_value() &&
@@ -76,6 +79,8 @@ void DeviceManager::addDevice(std::string path) {
     }
 
     try {
+        // A HID++ 2.0 receiver reports itself as version 1.0 here; that lets us
+        // separate receivers from ordinary devices without a second probe.
         auto device = hidpp::Device::make(
                 path, hidpp::DefaultDevice, self<DeviceManager>().lock(),
                 config()->io_timeout.value_or(defaults::io_timeout));
@@ -112,8 +117,8 @@ void DeviceManager::addDevice(std::string path) {
         _receivers.emplace(path, receiver);
         _ipc_receivers->receiverAdded(receiver);
     } else {
-        /* TODO: Can non-receivers only contain 1 device?
-        * If the device exists, it is guaranteed to be an HID++ 2.0 device */
+        // Non-receiver devices are treated as direct devices. If the default HID++
+        // path fails, try the corded-device fallback before giving up.
         if (defaultExists) {
             auto device = Device::make(path, hidpp::DefaultDevice, self<DeviceManager>().lock());
             std::lock_guard<std::mutex> lock(_map_lock);
@@ -144,10 +149,12 @@ void DeviceManager::addDevice(std::string path) {
     }
 }
 
+// Notify IPC clients that a receiver-backed device has appeared.
 void DeviceManager::addExternalDevice(const std::shared_ptr<Device>& d) {
     _ipc_devices->deviceAdded(d);
 }
 
+// Notify IPC clients that a receiver-backed device is gone.
 void DeviceManager::removeExternalDevice(const std::shared_ptr<Device>& d) {
     _ipc_devices->deviceRemoved(d);
 }
@@ -191,6 +198,8 @@ DeviceManager::DevicesIPC::DevicesIPC(DeviceManager* manager) :
                 }) {
 }
 
+// Return a snapshot of the current device list, including receiver-backed devices.
+// Taking the lock here avoids exposing partially updated maps to IPC clients.
 std::vector<std::shared_ptr<Device>> DeviceManager::listDevices() const {
     std::lock_guard<std::mutex> lock(_map_lock);
     std::vector<std::shared_ptr<Device>> devices;
@@ -204,6 +213,7 @@ std::vector<std::shared_ptr<Device>> DeviceManager::listDevices() const {
     return devices;
 }
 
+// Return a snapshot of the receiver list.
 std::vector<std::shared_ptr<Receiver>> DeviceManager::listReceivers() const {
     std::lock_guard<std::mutex> lock(_map_lock);
     std::vector<std::shared_ptr<Receiver>> receivers;
@@ -212,11 +222,13 @@ std::vector<std::shared_ptr<Receiver>> DeviceManager::listReceivers() const {
     return receivers;
 }
 
+// Broadcast a newly attached device to IPC listeners.
 void DeviceManager::DevicesIPC::deviceAdded(
         const std::shared_ptr<Device>& d) {
     emit_signal("DeviceAdded", d);
 }
 
+// Broadcast a removed device to IPC listeners.
 void DeviceManager::DevicesIPC::deviceRemoved(
         const std::shared_ptr<Device>& d) {
     emit_signal("DeviceRemoved", d);
@@ -240,16 +252,20 @@ DeviceManager::ReceiversIPC::ReceiversIPC(DeviceManager* manager) :
                 }) {
 }
 
+// Broadcast a newly attached receiver to IPC listeners.
 void DeviceManager::ReceiversIPC::receiverAdded(
         const std::shared_ptr<Receiver>& r) {
     emit_signal("ReceiverAdded", r);
 }
 
+// Broadcast a removed receiver to IPC listeners.
 void DeviceManager::ReceiversIPC::receiverRemoved(
         const std::shared_ptr<Receiver>& r) {
     emit_signal("ReceiverRemoved", r);
 }
 
+// Allocate the next free integer nickname for devices. These are small integers
+// so IPC paths stay short and remain stable until a device disappears.
 int DeviceManager::newDeviceNickname() {
     std::lock_guard<std::mutex> lock(_nick_lock);
 
@@ -285,6 +301,8 @@ int DeviceManager::newDeviceNickname() {
     return ret;
 }
 
+// Allocate the next free integer nickname for receivers using the same pattern
+// as device nicknames.
 int DeviceManager::newReceiverNickname() {
     std::lock_guard<std::mutex> lock(_nick_lock);
 

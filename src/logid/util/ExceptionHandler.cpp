@@ -23,6 +23,7 @@
 
 using namespace logid;
 
+// Normalize exceptions raised from task callbacks so the worker threads keep running.
 void ExceptionHandler::Default(std::exception& error) {
     try {
         throw error;

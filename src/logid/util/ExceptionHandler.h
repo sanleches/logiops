@@ -21,6 +21,7 @@
 #include <stdexcept>
 
 namespace logid::ExceptionHandler {
+    // Default background-task exception handler that logs and suppresses known runtime errors.
     void Default(std::exception& e);
 }
 

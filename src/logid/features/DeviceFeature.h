@@ -31,6 +31,7 @@ namespace logid::config {
 }
 
 namespace logid::features {
+    // Base helper for device-level features that live across profiles.
     class UnsupportedFeature : public std::exception {
     public:
         UnsupportedFeature() = default;
@@ -41,6 +42,9 @@ namespace logid::features {
     };
 
     template<typename T>
+    // Small helper that exposes `T` through `shared_ptr` while keeping the
+    // constructor protected. This lets feature code create managed instances
+    // without exposing raw `new` or public constructors everywhere.
     class _featureWrapper : public T {
         friend class DeviceFeature;
 
@@ -54,13 +58,17 @@ namespace logid::features {
         }
     };
 
+    // Base class for per-device features such as DPI, remapping, and scroll mode.
     class DeviceFeature {
         std::weak_ptr<DeviceFeature> _self;
     public:
+        // Apply the current profile's configuration to the device.
         virtual void configure() = 0;
 
+        // Register runtime event handlers used while the device is active.
         virtual void listen() = 0;
 
+        // Switch the feature to a different profile fragment.
         virtual void setProfile(config::Profile& profile) = 0;
 
         virtual ~DeviceFeature() = default;
@@ -70,16 +78,22 @@ namespace logid::features {
         DeviceFeature(DeviceFeature&&) = delete;
 
     protected:
+        // Store the owning device pointer.
         explicit DeviceFeature(Device* dev) : _device(dev) {}
 
         Device* _device;
 
+        // Return a typed weak pointer to the current concrete feature instance.
+        // Features use this inside async callbacks so they can stop safely if the
+        // parent device has already been destroyed.
         template<typename T>
         [[nodiscard]] std::weak_ptr<T> self() const {
             return std::dynamic_pointer_cast<T>(_self.lock());
         }
 
     public:
+        // Create a managed feature object and store a weak self-reference so
+        // later callbacks can tell whether the feature is still alive.
         template<typename T, typename... Args>
         static std::shared_ptr<T> make(Args... args) {
             auto feature = _featureWrapper<T>::make(std::forward<Args>(args)...);

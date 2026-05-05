@@ -24,6 +24,7 @@
 
 using namespace logid;
 
+// Print a formatted line to stdout or stderr when the current log level allows it.
 void logid::logPrintf(LogLevel level, const char* format, ...) {
     if (global_loglevel > level) return;
 
@@ -39,6 +40,7 @@ void logid::logPrintf(LogLevel level, const char* format, ...) {
     fprintf(stream, "\n");
 }
 
+// Convert the enum value into the stable prefix used in log output.
 const char* logid::levelPrefix(LogLevel level) {
     switch (level) {
         case RAWREPORT:
@@ -57,6 +59,7 @@ const char* logid::levelPrefix(LogLevel level) {
 }
 
 
+// Parse a case-insensitive string into a log level.
 LogLevel logid::toLogLevel(std::string s) {
     std::string original_str = s;
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);

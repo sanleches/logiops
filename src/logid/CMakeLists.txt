@@ -10,6 +10,7 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/../CMake")
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 
+# logid is the daemon executable that ties config, input, actions, and device backends together.
 add_executable(logid
         logid.cpp
         util/log.cpp
@@ -100,7 +101,7 @@ if (SYSTEMD_FOUND)
                 "${SYSTEMD_SERVICES_INSTALL_DIR}")
     endif ()
 
-    # Install systemd service
+    # Install the service unit when systemd metadata is available.
     configure_file(logid.service.in ${CMAKE_BINARY_DIR}/logid.service)
     message(STATUS "systemd units will be installed at ${SYSTEMD_SERVICES_INSTALL_DIR}")
     install(FILES ${CMAKE_BINARY_DIR}/logid.service
@@ -110,7 +111,7 @@ elseif (NOT SYSTEMD_FOUND AND SYSTEMD_SERVICES_INSTALL_DIR)
     message(FATAL_ERROR "systemd is not found w/ pkg-config but SYSTEMD_SERVICES_INSTALL_DIR is defined.")
 endif ()
 
-# Install DBus conf
+# Install the D-Bus policy needed for the daemon IPC surface.
 # TODO: Is there a better way of setting the system policy directory?
 set(DBUS_SYSTEM_POLICY_INSTALL_DIR "/usr/share/dbus-1/system.d")
 configure_file(logiops-dbus.conf.in ${CMAKE_BINARY_DIR}/pizza.pixl.LogiOps.conf)

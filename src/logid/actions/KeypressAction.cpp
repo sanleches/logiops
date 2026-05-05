@@ -24,8 +24,10 @@
 using namespace logid::actions;
 using namespace logid::backend;
 
+// IPC name used when this action is exported through D-Bus.
 const char* KeypressAction::interface_name = "Keypress";
 
+// Attach the action to the config and populate the internal key-code list.
 KeypressAction::KeypressAction(
         Device* device, config::KeypressAction& config,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
@@ -40,6 +42,7 @@ KeypressAction::KeypressAction(
     _setConfig();
 }
 
+// Press all configured keys in order.
 void KeypressAction::press() {
     std::shared_lock lock(_config_mutex);
     _pressed = true;
@@ -47,6 +50,7 @@ void KeypressAction::press() {
         _device->virtualInput()->pressKey(key);
 }
 
+// Release all configured keys in the same order.
 void KeypressAction::release() {
     std::shared_lock lock(_config_mutex);
     _pressed = false;
@@ -54,6 +58,7 @@ void KeypressAction::release() {
         _device->virtualInput()->releaseKey(key);
 }
 
+// Convert the current config into a list of numeric key codes and register them on the virtual device.
 void KeypressAction::_setConfig() {
     _keys.clear();
 
@@ -62,6 +67,7 @@ void KeypressAction::_setConfig() {
 
     auto& config = _config.keys.value();
 
+    // A single string means one key name.
     if (std::holds_alternative<std::string>(config)) {
         const auto& key = std::get<std::string>(config);
         try {
@@ -71,10 +77,12 @@ void KeypressAction::_setConfig() {
         } catch (InputDevice::InvalidEventCode& e) {
             logPrintf(WARN, "Invalid keycode %s, skipping.", key.c_str());
         }
+    // A single integer means one numeric key code.
     } else if (std::holds_alternative<uint>(_config.keys.value())) {
         const auto& key = std::get<uint>(config);
         _device->virtualInput()->registerKey(key);
         _keys.emplace_back(key);
+    // A list allows mixed names and numeric codes.
     } else if (std::holds_alternative<
             std::list<std::variant<uint, std::string>>>(config)) {
         const auto& keys = std::get<
@@ -99,10 +107,12 @@ void KeypressAction::_setConfig() {
     }
 }
 
+// This action is a temporary diversion of the hardware button.
 uint8_t KeypressAction::reprogFlags() const {
     return hidpp20::ReprogControls::TemporaryDiverted;
 }
 
+// Return the configured key names as strings.
 std::vector<std::string> KeypressAction::getKeys() const {
     std::shared_lock lock(_config_mutex);
     std::vector<std::string> ret;
@@ -112,6 +122,7 @@ std::vector<std::string> KeypressAction::getKeys() const {
     return ret;
 }
 
+// Replace the configured keys and rebuild the cached key-code list.
 void KeypressAction::setKeys(const std::vector<std::string>& keys) {
     std::unique_lock lock(_config_mutex);
     if (_pressed)

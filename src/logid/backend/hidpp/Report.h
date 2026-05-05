@@ -24,6 +24,7 @@
 #include <cstdint>
 
 namespace logid::backend::hidpp {
+    // Detect which HID++ report formats are supported by a device descriptor.
     uint8_t getSupportedReports(const std::vector<uint8_t>& report_desc);
 
     /* Some devices only support a subset of these reports */
@@ -41,10 +42,12 @@ namespace logid::backend::hidpp {
         static constexpr uint8_t Parameters = 4;
     }
 
+    // Parsed HID++ report buffer with helpers for request/response layout.
     class Report {
     public:
         typedef ReportType::ReportType Type;
 
+        // Thrown when the report type byte is invalid.
         class InvalidReportID : public std::exception {
         public:
             InvalidReportID() = default;
@@ -52,6 +55,7 @@ namespace logid::backend::hidpp {
             [[nodiscard]] const char* what() const noexcept override;
         };
 
+        // Thrown when a report buffer does not match the expected layout.
         class InvalidReportLength : public std::exception {
         public:
             InvalidReportLength() = default;
@@ -61,6 +65,7 @@ namespace logid::backend::hidpp {
 
         static constexpr std::size_t MaxDataLength = 20;
 
+        // Build a report with explicit header fields.
         Report(Report::Type type, DeviceIndex device_index,
                uint8_t sub_id,
                uint8_t address);

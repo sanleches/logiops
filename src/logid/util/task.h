@@ -24,13 +24,16 @@
 #include <future>
 
 namespace logid {
+    // Small scheduled task record used by the worker queue.
     struct task {
         std::function<void()> function;
         std::chrono::time_point<std::chrono::system_clock> time;
     };
 
+    // Start the background worker pool used by delayed device actions.
     void init_workers(int worker_count);
 
+    // Queue work for immediate or delayed execution.
     void run_task(std::function<void()> function);
     void run_task_after(std::function<void()> function, std::chrono::milliseconds delay);
     void run_task(task t);

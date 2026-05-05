@@ -21,10 +21,12 @@
 #include <actions/gesture/Gesture.h>
 
 namespace logid::actions {
+    // Gesture implementation that intentionally does nothing.
     class NullGesture : public Gesture {
     public:
         static const char* interface_name;
 
+        // Bind the no-op gesture to the config entry.
         NullGesture(Device* device,
                     config::NoGesture& config,
                     const std::shared_ptr<ipcgull::node>& parent);

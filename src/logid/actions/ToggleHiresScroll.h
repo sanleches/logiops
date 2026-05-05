@@ -22,10 +22,12 @@
 #include <features/HiresScroll.h>
 
 namespace logid::actions {
+    // Action that toggles high-resolution scrolling on the device.
     class ToggleHiresScroll : public Action {
     public:
         static const char* interface_name;
 
+        // Bind the action to the optional HiResScroll feature.
         ToggleHiresScroll(Device* dev, const std::shared_ptr<ipcgull::node>& parent);
 
         ToggleHiresScroll(Device* device,
@@ -33,8 +35,10 @@ namespace logid::actions {
                           const std::shared_ptr<ipcgull::node>& parent) :
                 ToggleHiresScroll(device, parent) {}
 
+        // Press flips the HiRes scroll mode asynchronously.
         void press() final;
 
+        // Release only clears the pressed state marker.
         void release() final;
 
         [[nodiscard]] uint8_t reprogFlags() const final;

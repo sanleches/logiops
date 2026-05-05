@@ -33,8 +33,10 @@ extern "C"
 using namespace logid;
 using namespace logid::backend::raw;
 
+// Initialize udev and the raw-device I/O monitor.
+// This layer watches for hidraw nodes appearing and disappearing at runtime.
 DeviceMonitor::DeviceMonitor() : _io_monitor(std::make_shared<IOMonitor>()),
-                                 _ready(false) {
+                                  _ready(false) {
     int ret;
     _udev_context = udev_new();
     if (!_udev_context)
@@ -73,6 +75,7 @@ DeviceMonitor::DeviceMonitor() : _io_monitor(std::make_shared<IOMonitor>()),
     _fd = udev_monitor_get_fd(_udev_monitor);
 }
 
+// Tear down the I/O monitor and udev handles.
 DeviceMonitor::~DeviceMonitor() {
     if (_ready)
         _io_monitor->remove(_fd);
@@ -83,6 +86,8 @@ DeviceMonitor::~DeviceMonitor() {
         udev_unref(_udev_context);
 }
 
+// Start receiving hotplug notifications after the derived object is ready.
+// `ready()` is separate so subclasses can finish their own setup first.
 void DeviceMonitor::ready() {
     if (_ready)
         return;
@@ -118,6 +123,8 @@ void DeviceMonitor::ready() {
     });
 }
 
+// Enumerate existing hidraw nodes and feed them through the add path.
+// This lets the daemon see devices that were already plugged in before startup.
 void DeviceMonitor::enumerate() {
     int ret;
     struct udev_enumerate* udev_enum = udev_enumerate_new(_udev_context);
@@ -153,6 +160,8 @@ void DeviceMonitor::enumerate() {
     udev_enumerate_unref(udev_enum);
 }
 
+// Add one device, retrying with exponential backoff when readiness is transient.
+// Some hidraw nodes appear before the underlying device is fully initialized.
 void DeviceMonitor::_addHandler(const std::string& device, int tries) {
     try {
         auto supported_reports = backend::hidpp::getSupportedReports(
@@ -180,6 +189,8 @@ void DeviceMonitor::_addHandler(const std::string& device, int tries) {
     }
 }
 
+// Remove one device from the derived backend.
+// The derived class decides how to tear down its own device objects.
 void DeviceMonitor::_removeHandler(const std::string& device) {
     try {
         removeDevice(device);

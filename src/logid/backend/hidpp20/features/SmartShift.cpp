@@ -19,6 +19,7 @@
 
 using namespace logid::backend::hidpp20;
 
+// Bind the base smart-shift feature to the device.
 SmartShift::SmartShift(Device* dev) : SmartShift(dev, ID) {
 }
 
@@ -26,10 +27,12 @@ SmartShift::SmartShift(Device* dev, uint16_t feature_id) :
         Feature(dev, feature_id) {
 }
 
+// Bind the V2 smart-shift feature to the device.
 SmartShiftV2::SmartShiftV2(Device* dev) : SmartShift(dev, ID) {
 }
 
 template<typename T>
+// Instantiate the requested smart-shift version if the device supports it.
 std::shared_ptr<T> make_smartshift(Device* dev) {
     try {
         return std::make_shared<T>(dev);
@@ -38,6 +41,7 @@ std::shared_ptr<T> make_smartshift(Device* dev) {
     }
 }
 
+// Prefer the newest supported smart-shift implementation.
 std::shared_ptr<SmartShift> SmartShift::autoVersion(Device* dev) {
     if (auto v2 = make_smartshift<SmartShiftV2>(dev))
         return v2;
@@ -45,6 +49,7 @@ std::shared_ptr<SmartShift> SmartShift::autoVersion(Device* dev) {
     return std::make_shared<SmartShift>(dev);
 }
 
+// Read the current smart-shift state.
 SmartShift::Status SmartShift::getStatus() {
     std::vector<uint8_t> params(0);
 
@@ -60,6 +65,7 @@ SmartShift::Status SmartShift::getStatus() {
     };
 }
 
+// Read the default smart-shift values.
 SmartShift::Defaults SmartShift::getDefaults() {
     std::vector<uint8_t> params(0);
 
@@ -72,6 +78,7 @@ SmartShift::Defaults SmartShift::getDefaults() {
     };
 }
 
+// Write the requested smart-shift state.
 void SmartShift::setStatus(Status status) {
     std::vector<uint8_t> params(3);
     if (status.setActive)
@@ -81,6 +88,7 @@ void SmartShift::setStatus(Status status) {
     callFunction(SetStatus, params);
 }
 
+// Read the V2 capability block for defaults.
 SmartShift::Defaults SmartShiftV2::getDefaults() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetCapabilities, params);
@@ -92,6 +100,7 @@ SmartShift::Defaults SmartShiftV2::getDefaults() {
     };
 }
 
+// Read the current V2 smart-shift state.
 SmartShift::Status SmartShiftV2::getStatus() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetStatus, params);
@@ -104,6 +113,7 @@ SmartShift::Status SmartShiftV2::getStatus() {
     };
 }
 
+// Write the requested V2 smart-shift state.
 void SmartShiftV2::setStatus(Status status) {
     std::vector<uint8_t> params(3);
     if (status.setActive)
@@ -116,10 +126,10 @@ void SmartShiftV2::setStatus(Status status) {
     callFunction(SetStatus, params);
 }
 
+// Report whether torque control is supported.
 bool SmartShiftV2::supportsTorque() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetCapabilities, params);
 
     return static_cast<bool>(response[0] & 1);
 }
-

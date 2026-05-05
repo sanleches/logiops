@@ -25,6 +25,8 @@
 using namespace logid;
 using namespace logid::backend;
 
+// Receiver nicknames keep receiver node names stable while the receiver exists.
+// Like device nicknames, they make the IPC tree easier to browse.
 ReceiverNickname::ReceiverNickname(
         const std::shared_ptr<DeviceManager>& manager) :
         _nickname(manager->newReceiverNickname()), _manager(manager) {
@@ -41,6 +43,9 @@ ReceiverNickname::~ReceiverNickname() {
     }
 }
 
+// Construct a monitored receiver and attach it to its IPC node.
+// The receiver monitor owns the low-level communication, while IPC exposes
+// the pairing and device lists to external clients.
 std::shared_ptr<Receiver> Receiver::make(
         const std::string& path,
         const std::shared_ptr<DeviceManager>& manager) {
@@ -50,6 +55,8 @@ std::shared_ptr<Receiver> Receiver::make(
 }
 
 
+// Open the HID++ 1.0 receiver monitor and wire it to the manager-owned IPC tree.
+// Receiver-backed devices are created lazily when pairing or connection events arrive.
 Receiver::Receiver(const std::string& path,
                    const std::shared_ptr<DeviceManager>& manager) :
         hidpp10::ReceiverMonitor(path, manager,
@@ -65,12 +72,15 @@ const Receiver::DeviceList& Receiver::devices() const {
 }
 
 Receiver::~Receiver() noexcept {
+    // Detach child devices so the manager stops exposing stale IPC objects.
     if (auto manager = _manager.lock()) {
         for (auto& d: _devices)
             manager->removeExternalDevice(d.second);
     }
 }
 
+// Handle device connection events reported by the receiver.
+// This is where a slot turns into a logical Device object.
 void Receiver::addDevice(hidpp::DeviceConnectionEvent event) {
     std::unique_lock<std::mutex> lock(_devices_change);
 
@@ -82,7 +92,8 @@ void Receiver::addDevice(hidpp::DeviceConnectionEvent event) {
     }
 
     try {
-        // Check if device is ignored before continuing
+        // Check if the device should be ignored before initializing it.
+        // This avoids spending time on devices the config explicitly disables.
         if (manager->config()->ignore.value_or(std::set<uint16_t>()).contains(event.pid)) {
             logPrintf(DEBUG, "%s:%d: Device 0x%04x ignored.",
                       _path.c_str(), event.index, event.pid);
@@ -106,6 +117,8 @@ void Receiver::addDevice(hidpp::DeviceConnectionEvent event) {
 
         auto version = hidpp_device->version();
 
+        // Receiver-linked HID++ 1.0 devices are not supported here.
+        // logiops focuses on HID++ 2.0 devices for full feature support.
         if (std::get<0>(version) < 2) {
             logPrintf(INFO, "Unsupported HID++ 1.0 device on %s:%d connected.",
                       _path.c_str(), event.index);
@@ -133,6 +146,8 @@ void Receiver::addDevice(hidpp::DeviceConnectionEvent event) {
     }
 }
 
+// Handle device removal events reported by the receiver.
+// The logical device disappears from both the receiver and the manager views.
 void Receiver::removeDevice(hidpp::DeviceIndex index) {
     std::unique_lock<std::mutex> lock(_devices_change);
     std::unique_lock<std::mutex> manager_lock;
@@ -146,6 +161,8 @@ void Receiver::removeDevice(hidpp::DeviceIndex index) {
     }
 }
 
+// Publish pairing metadata so clients can present the passkey flow.
+// This is only about UI/state reporting, not the actual pairing logic.
 void Receiver::pairReady(const hidpp10::DeviceDiscoveryEvent& event,
                          const std::string& passkey) {
     std::string type;
@@ -183,6 +200,8 @@ std::shared_ptr<hidpp10::Receiver> Receiver::rawReceiver() {
     return receiver();
 }
 
+// Query the receiver for devices currently paired to its wireless slots.
+// The result is a friendly summary that IPC clients can display.
 std::vector<std::tuple<int, uint16_t, std::string, uint32_t>> Receiver::pairedDevices() const {
     std::vector<std::tuple<int, uint16_t, std::string, uint32_t>> ret;
     for (int i = hidpp::WirelessDevice1; i <= hidpp::WirelessDevice6; ++i) {
@@ -200,6 +219,8 @@ std::vector<std::tuple<int, uint16_t, std::string, uint32_t>> Receiver::pairedDe
     return ret;
 }
 
+// Delegate the pairing control calls directly to the underlying receiver.
+// The wrapper does not invent its own pairing protocol.
 void Receiver::startPair(uint8_t timeout) {
     _startPair(timeout);
 }

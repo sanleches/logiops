@@ -20,9 +20,11 @@
 
 using namespace logid::backend::hidpp20;
 
+// Bind the host-switch helper to the device.
 ChangeHost::ChangeHost(Device* dev) : Feature(dev, ID), _host_count(0) {
 }
 
+// Read the number of paired hosts and the active host.
 ChangeHost::HostInfo ChangeHost::getHostInfo() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetHostInfo, params);
@@ -38,6 +40,7 @@ ChangeHost::HostInfo ChangeHost::getHostInfo() {
     return info;
 }
 
+// Switch to another paired host.
 void ChangeHost::setHost(uint8_t host) {
     /* Expect connection to be severed here, send without response
      *
@@ -56,6 +59,7 @@ void ChangeHost::setHost(uint8_t host) {
 }
 
 [[maybe_unused]]
+// Read the per-host cookies if the device exposes them.
 std::vector<uint8_t> ChangeHost::getCookies() {
     if (!_host_count)
         getHostInfo();
@@ -69,6 +73,7 @@ std::vector<uint8_t> ChangeHost::getCookies() {
 }
 
 [[maybe_unused]]
+// Store a cookie value for one host.
 void ChangeHost::setCookie(uint8_t host, uint8_t cookie) {
     std::vector<uint8_t> params = {host, cookie};
     callFunction(SetCookie, params);

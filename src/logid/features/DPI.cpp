@@ -24,6 +24,9 @@
 using namespace logid::features;
 using namespace logid::backend;
 
+// Find the closest supported DPI value for the device's DPI list.
+// Some devices report a discrete list of values, while others report a range
+// plus a step size. This helper snaps the requested value to a valid number.
 uint16_t getClosestDPI(const hidpp20::AdjustableDPI::SensorDPIList& dpi_list,
                        uint16_t dpi) {
     if (dpi_list.isRange) {
@@ -55,6 +58,8 @@ uint16_t getClosestDPI(const hidpp20::AdjustableDPI::SensorDPIList& dpi_list,
     }
 }
 
+// Bind the DPI feature to the current profile and the device's adjustable DPI feature.
+// The wrapper keeps both the saved profile config and the live hardware object.
 DPI::DPI(Device* device) : DeviceFeature(device), _config(device->activeProfile().dpi) {
     try {
         _adjustable_dpi = std::make_shared<hidpp20::AdjustableDPI>
@@ -66,6 +71,9 @@ DPI::DPI(Device* device) : DeviceFeature(device), _config(device->activeProfile(
     _ipc_interface = _device->ipcNode()->make_interface<IPC>(this);
 }
 
+// Apply the configured DPI settings to each sensor.
+// If the profile stores one number, it applies to sensor 0. If it stores a list,
+// each list entry maps to a sensor in order.
 void DPI::configure() {
     std::shared_lock lock(_config_mutex);
 
@@ -93,18 +101,25 @@ void DPI::configure() {
     }
 }
 
+// DPI does not require an active runtime event stream.
 void DPI::listen() {
 }
 
+// Update the active profile binding.
+// Each profile can carry different DPI values, so the config pointer changes here.
 void DPI::setProfile(config::Profile& profile) {
     std::unique_lock lock(_config_mutex);
     _config = profile.dpi;
 }
 
+// Read the current DPI directly from the device.
+// This asks the hardware for its live value instead of trusting the profile cache.
 uint16_t DPI::getDPI(uint8_t sensor) {
     return _adjustable_dpi->getSensorDPI(sensor);
 }
 
+// Clamp the requested DPI to a supported value and write it back to the device.
+// The user can type any value, but the hardware may only accept nearby ones.
 void DPI::setDPI(uint16_t dpi, uint8_t sensor) {
     if (dpi == 0)
         return;
@@ -114,6 +129,8 @@ void DPI::setDPI(uint16_t dpi, uint8_t sensor) {
     _adjustable_dpi->setSensorDPI(sensor, getClosestDPI(dpi_list, dpi));
 }
 
+// Ensure the cached DPI list exists up to the requested sensor index.
+// This avoids re-querying the device for the same sensor over and over.
 void DPI::_fillDPILists(uint8_t sensor) {
     bool needs_fill;
     {

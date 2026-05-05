@@ -33,6 +33,8 @@ static constexpr auto default_config = "/etc/logid.cfg";
 
 using namespace logid;
 
+// CLI parsing is intentionally small and direct: the daemon only needs to know
+// where the config file lives and how chatty logging should be.
 struct CmdlineOptions {
     std::string config_file = default_config;
 };
@@ -47,14 +49,16 @@ enum class Option {
     Version
 };
 
+// Parse the daemon command line before any config or device work starts.
+// This runs before any worker threads or hardware access so mistakes are caught early.
 void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
     for (int i = 1; i < argc; i++) {
         Option option = Option::None;
         if (argv[i][0] == '-') {
-            // This argument is an option
+            // This argument is an option.
             switch (argv[i][1]) {
                 case '-': {
-                    // Full option name
+                    // Full option name.
                     std::string op_str = argv[i];
                     if (op_str == "--verbose") option = Option::Verbose;
                     if (op_str == "--config") option = Option::Config;
@@ -62,16 +66,16 @@ void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
                     if (op_str == "--version") option = Option::Version;
                     break;
                 }
-                case 'v': // Verbosity
+                case 'v': // Verbosity.
                     option = Option::Verbose;
                     break;
-                case 'V': //Version
+                case 'V': // Version.
                     option = Option::Version;
                     break;
-                case 'c': // Config file path
+                case 'c': // Config file path.
                     option = Option::Config;
                     break;
-                case 'h': // Help
+                case 'h': // Help.
                     option = Option::Help;
                     break;
                 default:
@@ -82,7 +86,7 @@ void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
             switch (option) {
                 case Option::Verbose: {
                     if (++i >= argc) {
-                        global_loglevel = DEBUG; // Assume debug verbosity
+                        global_loglevel = DEBUG; // Default to debug when no level follows.
                         break;
                     }
                     std::string loglevel = argv[i];
@@ -90,8 +94,8 @@ void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
                         global_loglevel = toLogLevel(argv[i]);
                     } catch (std::invalid_argument& e) {
                         if (argv[i][0] == '-') {
-                            global_loglevel = DEBUG; // Assume debug verbosity
-                            i--; // Go back to last argument to continue loop.
+                            global_loglevel = DEBUG; // Treat the next flag as the next option.
+                            i--;
                         } else {
                             logPrintf(WARN, e.what());
                             printf("Valid verbosity levels are: Debug, Info, "
@@ -130,18 +134,20 @@ Possible options are:
 }
 
 int main(int argc, char** argv) {
+    // Load CLI settings first so the rest of startup uses the right config file
+    // and log level.
     CmdlineOptions options{};
     readCliOptions(argc, argv, options);
     std::shared_ptr<Configuration> config;
     std::shared_ptr<InputDevice> virtual_input;
 
 
-    /* Set stdout buff to Null so that loging system like journal
-     * can actually read it.
-     */
+    // Keep stdout unbuffered so journald and similar log collectors see lines immediately.
+    // That makes startup failures visible before the daemon exits.
     setbuf(stdout, NULL);
 
-    // Read config
+    // Read the daemon configuration before creating devices or IPC state.
+    // Startup is aborted early if the config file cannot be parsed.
     try {
         config = std::make_shared<Configuration>(options.config_file);
     } catch (std::exception &e) {
@@ -149,17 +155,21 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
+    // Worker threads handle deferred actions and configuration updates.
     init_workers(config->workers.value_or(defaults::workers));
 
+    // The daemon can publish IPC on either the system bus or the user bus.
 #ifdef USE_USER_BUS
     auto server_bus = ipcgull::IPCGULL_USER;
 #else
     auto server_bus = ipcgull::IPCGULL_SYSTEM;
 #endif
 
+    // Create the IPC server after the config is loaded so the exported tree matches it.
     auto server = ipcgull::make_server(SERVICE_ROOT_NAME, server_root_node, server_bus);
 
-    //Create a virtual input device
+    // Create the virtual input device that translated actions will write into.
+    // This is the synthetic keyboard/mouse device visible to the rest of the OS.
     try {
         virtual_input = std::make_unique<InputDevice>(virtual_input_name);
     } catch (std::system_error& e) {
@@ -167,7 +177,8 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    // Device manager runs on its own I/O thread asynchronously
+    // Device discovery and device-specific callbacks run asynchronously on their own I/O path.
+    // The manager owns the lifetime of direct devices, receivers, and their IPC nodes.
     auto device_manager = DeviceManager::make<DeviceManager>(config, virtual_input, server);
 
     device_manager->enumerate();

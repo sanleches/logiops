@@ -20,32 +20,39 @@
 
 using namespace logid::actions;
 
+// IPC name used when this gesture is exported through D-Bus.
 const char* NullGesture::interface_name = "None";
 
+// Bind the no-op gesture to the config entry.
 NullGesture::NullGesture(Device* device,
                          config::NoGesture& config,
                          const std::shared_ptr<ipcgull::node>& parent) :
         Gesture(device, parent, interface_name), _config(config) {
 }
 
+// Track the threshold state even though no action will be triggered.
 void NullGesture::press(bool init_threshold) {
     _axis = init_threshold ? _config.threshold.value_or(
             defaults::gesture_threshold) : 0;
 }
 
+// No-op release, but keep the signature consistent with other gestures.
 void NullGesture::release(bool primary) {
     // Do nothing
     (void) primary; // Suppress unused warning
 }
 
+// Accumulate movement so threshold comparisons still work.
 void NullGesture::move(int16_t axis) {
     _axis += axis;
 }
 
+// Null gestures can be used in wheel-like paths.
 bool NullGesture::wheelCompatibility() const {
     return true;
 }
 
+// Report whether enough movement has accumulated to count as active.
 bool NullGesture::metThreshold() const {
     return _axis >= _config.threshold.value_or(defaults::gesture_threshold);
 }

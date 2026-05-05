@@ -28,6 +28,7 @@ extern "C"
 
 using namespace logid;
 
+// Build a descriptive exception message for invalid event names or codes.
 InputDevice::InvalidEventCode::InvalidEventCode(const std::string& name) :
         _what("Invalid event code " + name) {
 }
@@ -40,15 +41,16 @@ const char* InputDevice::InvalidEventCode::what() const noexcept {
     return _what.c_str();
 }
 
+// Create the virtual uinput device and seed it with the common keyboard capabilities.
+// The initial device only knows a small set of keys; more are added lazily.
 InputDevice::InputDevice(const char* name) {
     device = libevdev_new();
     libevdev_set_name(device, name);
 
     libevdev_enable_event_type(device, EV_KEY);
     for (unsigned int i = 0; i < KEY_CNT; i++) {
-        // Enable some keys which a normal keyboard should have
-        // by default, i.e. a-z, modifier keys and so on, see:
-        // /usr/include/linux/input-event-codes.h
+        // Pre-enable the common keyboard range so synthesized input works out of the box.
+        // Most actions only need standard keyboard codes, so this covers the common case.
         if (i < 128) {
             registered_keys[i] = true;
             libevdev_enable_event_code(device, EV_KEY, i, nullptr);
@@ -76,6 +78,9 @@ InputDevice::~InputDevice() {
     libevdev_free(device);
 }
 
+// Make sure a key code is exported before clients try to emit it.
+// This may rebuild the uinput device because libevdev does not let us add codes
+// to an already-created virtual device in place.
 void InputDevice::registerKey(uint code) {
     // TODO: Maybe print error message, if wrong code is passed?
     if (code >= KEY_CNT || registered_keys[code]) {
@@ -87,6 +92,8 @@ void InputDevice::registerKey(uint code) {
     registered_keys[code] = true;
 }
 
+// Make sure a relative axis is exported before clients try to emit it.
+// Like keys, axes have to be declared before the kernel will accept events.
 void InputDevice::registerAxis(uint axis) {
     // TODO: Maybe print error message, if wrong code is passed?
     if (axis >= REL_CNT || registered_axis[axis]) {
@@ -98,10 +105,12 @@ void InputDevice::registerAxis(uint axis) {
     registered_axis[axis] = true;
 }
 
+// Send a motion event for the requested relative axis.
 void InputDevice::moveAxis(uint axis, int movement) {
     _sendEvent(EV_REL, axis, movement);
 }
 
+// Emit a press or release event for a key.
 void InputDevice::pressKey(uint code) {
     _sendEvent(EV_KEY, code, 1);
 }
@@ -110,10 +119,12 @@ void InputDevice::releaseKey(uint code) {
     _sendEvent(EV_KEY, code, 0);
 }
 
+// Translate a numeric code into its libevdev name.
 std::string InputDevice::toKeyName(uint code) {
     return _toEventName(EV_KEY, code);
 }
 
+// Translate an input name back into its numeric key code.
 uint InputDevice::toKeyCode(const std::string& name) {
     return _toEventCode(EV_KEY, name);
 }
@@ -127,6 +138,7 @@ uint InputDevice::toAxisCode(const std::string& name) {
 }
 
 /* Returns -1 if axis_code is not hi-res */
+// Return the low-resolution wheel axis for a high-resolution wheel code when available.
 int InputDevice::getLowResAxis(const uint axis_code) {
     /* Some systems don't have these hi-res axes */
 #ifdef REL_WHEEL_HI_RES
@@ -141,6 +153,7 @@ int InputDevice::getLowResAxis(const uint axis_code) {
     return -1;
 }
 
+// Resolve a libevdev event name from a numeric code.
 std::string InputDevice::_toEventName(uint type, uint code) {
     const char* ret = libevdev_event_code_get_name(type, code);
 
@@ -150,6 +163,7 @@ std::string InputDevice::_toEventName(uint type, uint code) {
     return {ret};
 }
 
+// Resolve a numeric event code from a libevdev name.
 uint InputDevice::_toEventCode(uint type, const std::string& name) {
     int code = libevdev_event_code_from_name(type, name.c_str());
 
@@ -159,6 +173,8 @@ uint InputDevice::_toEventCode(uint type, const std::string& name) {
     return code;
 }
 
+// Recreate the uinput device after adding support for a new event type/code.
+// This is required because a uinput device's supported codes are fixed when it is created.
 void InputDevice::_enableEvent(const uint type, const uint code) {
     std::unique_lock lock(_input_mutex);
     libevdev_uinput_destroy(ui_device);
@@ -176,6 +192,8 @@ void InputDevice::_enableEvent(const uint type, const uint code) {
     }
 }
 
+// Emit a single input event followed by SYN_REPORT so the kernel sees a complete frame.
+// The SYN_REPORT is what tells the kernel "this input packet is done".
 void InputDevice::_sendEvent(uint type, uint code, int value) {
     std::unique_lock lock(_input_mutex);
     libevdev_uinput_write_event(ui_device, type, code, value);

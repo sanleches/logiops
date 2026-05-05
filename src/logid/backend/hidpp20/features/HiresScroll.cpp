@@ -20,9 +20,11 @@
 
 using namespace logid::backend::hidpp20;
 
+// Bind the hires-scroll feature to the device.
 HiresScroll::HiresScroll(Device* device) : Feature(device, ID) {
 }
 
+// Read the capability block.
 HiresScroll::Capabilities HiresScroll::getCapabilities() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetCapabilities, params);
@@ -33,12 +35,14 @@ HiresScroll::Capabilities HiresScroll::getCapabilities() {
     return capabilities;
 }
 
+// Read the current mode bits.
 uint8_t HiresScroll::getMode() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetMode, params);
     return response[0];
 }
 
+// Write new mode bits.
 void HiresScroll::setMode(uint8_t mode) {
     std::vector<uint8_t> params(1);
     params[0] = mode;
@@ -51,6 +55,7 @@ void HiresScroll::setMode(uint8_t mode) {
     return params[0];
 }
 
+// Decode a wheel movement event.
 HiresScroll::WheelStatus HiresScroll::wheelMovementEvent(const hidpp::Report& report) {
     assert(report.function() == WheelMovement);
     WheelStatus status{};
@@ -61,6 +66,7 @@ HiresScroll::WheelStatus HiresScroll::wheelMovementEvent(const hidpp::Report& re
 }
 
 [[maybe_unused]]
+// Decode a ratchet switch event.
 HiresScroll::RatchetState HiresScroll::ratchetSwitchEvent(const hidpp::Report& report) {
     assert(report.function() == RatchetSwitch);
     // Possible bad cast

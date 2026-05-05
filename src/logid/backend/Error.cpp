@@ -20,10 +20,12 @@
 
 using namespace logid::backend;
 
+// Short message used when device initialization should be retried later.
 const char* DeviceNotReady::what() const noexcept {
     return "device not ready";
 }
 
+// Short message used when backend I/O exceeds the configured timeout.
 const char* TimeoutError::what() const noexcept {
     return "Device timed out";
 }

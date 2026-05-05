@@ -23,6 +23,7 @@
 using namespace logid;
 using namespace std::chrono;
 
+// Priority ordering for the earliest scheduled task.
 struct task_less {
 private:
     std::greater<> greater;
@@ -38,6 +39,7 @@ static std::condition_variable task_cv {};
 static std::atomic_bool workers_init = false;
 static std::atomic_bool workers_run = false;
 
+// Signal all worker threads to stop and let them drain out.
 void stop_workers() {
     std::unique_lock lock(task_mutex);
     if (workers_init) {
@@ -50,6 +52,7 @@ void stop_workers() {
     }
 }
 
+// Worker loop that waits for the next due task and executes it off-thread.
 void worker() {
     std::unique_lock lock(task_mutex);
     while (workers_run) {
@@ -58,8 +61,8 @@ void worker() {
         if (!workers_run)
             break;
 
-        /* top task is in the future, wait */
-        if (tasks.top().time >= system_clock::now()) {
+            // The next task is in the future, so sleep until it becomes due.
+            if (tasks.top().time >= system_clock::now()) {
             auto wait = tasks.top().time - system_clock::now();
             task_cv.wait_for(lock, wait, []() {
                 return (!tasks.empty() && (tasks.top().time < system_clock::now())) ||
@@ -71,7 +74,7 @@ void worker() {
         }
 
         if (!tasks.empty()) {
-            /* May have timed out and is no longer empty */
+            // The queue may have changed while waiting, so re-check before running.
             auto f = tasks.top().function;
             tasks.pop();
 
@@ -86,6 +89,7 @@ void worker() {
     }
 }
 
+// Spawn the background workers once during startup.
 void logid::init_workers(int worker_count) {
     std::lock_guard lock(task_mutex);
     assert(!workers_init);
@@ -99,6 +103,7 @@ void logid::init_workers(int worker_count) {
     atexit(&stop_workers);
 }
 
+// Queue an immediate task.
 void logid::run_task(std::function<void()> function) {
     task t{
             .function = std::move(function),
@@ -108,6 +113,7 @@ void logid::run_task(std::function<void()> function) {
     run_task(t);
 }
 
+// Queue a task to run after a delay.
 void logid::run_task_after(std::function<void()> function, std::chrono::milliseconds delay) {
     task t{
             .function = std::move(function),
@@ -117,6 +123,7 @@ void logid::run_task_after(std::function<void()> function, std::chrono::millisec
     run_task(t);
 }
 
+// Insert a task into the priority queue and wake one worker.
 void logid::run_task(task t) {
     std::lock_guard lock(task_mutex);
 

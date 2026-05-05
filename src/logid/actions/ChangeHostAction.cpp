@@ -25,8 +25,10 @@
 using namespace logid::actions;
 using namespace logid::backend;
 
+// IPC name used when this action is exported through D-Bus.
 const char* ChangeHostAction::interface_name = "ChangeHost";
 
+// Bind the action to the optional ChangeHost feature and normalize any configured host string.
 ChangeHostAction::ChangeHostAction(
         Device* device, config::ChangeHost& config,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent)
@@ -54,6 +56,7 @@ ChangeHostAction::ChangeHostAction(
     }
 }
 
+// Return the configured host selector as a string.
 std::string ChangeHostAction::getHost() const {
     std::shared_lock lock(_config_mutex);
     if (_config.host.has_value()) {
@@ -66,6 +69,7 @@ std::string ChangeHostAction::getHost() const {
     }
 }
 
+// Store a host selector in normalized lowercase form.
 void ChangeHostAction::setHost(std::string host) {
     std::transform(host.begin(), host.end(),
                    host.begin(), ::tolower);
@@ -77,10 +81,12 @@ void ChangeHostAction::setHost(std::string host) {
     }
 }
 
+// The action only triggers on release so a quick press does not change host immediately.
 void ChangeHostAction::press() {
     // Do nothing, wait until release
 }
 
+// Apply the host change asynchronously so the device input path stays responsive.
 void ChangeHostAction::release() {
     std::shared_lock lock(_config_mutex);
     if (_change_host && _config.host.has_value()) {
@@ -107,6 +113,7 @@ void ChangeHostAction::release() {
     }
 }
 
+// The host-switch action temporarily diverts the hardware button.
 uint8_t ChangeHostAction::reprogFlags() const {
     return hidpp20::ReprogControls::TemporaryDiverted;
 }

@@ -32,6 +32,8 @@ using namespace logid;
 using namespace logid::actions;
 
 namespace logid::actions {
+    // Map configuration types onto the concrete action subclasses.
+    // This trait lets the factory keep the config variant and the C++ type in sync.
     template<typename T>
     struct action_type {
         typedef typename T::action type;
@@ -45,6 +47,8 @@ namespace logid::actions {
     struct action_type<T&> : action_type<T> {
     };
 
+    // Instantiate the action object and attach it to the IPC tree.
+    // The action gets a child IPC node so users can edit it independently.
     template<typename T>
     std::shared_ptr<Action> _makeAction(
             Device* device, T& action,
@@ -53,6 +57,8 @@ namespace logid::actions {
                 device, std::forward<T&>(action), parent);
     }
 
+    // Resolve an action name to a config default or a concrete action instance.
+    // If the name is recognized, we materialize the matching config object first.
     template<typename T>
     std::shared_ptr<Action> _makeAction(
             Device* device, const std::string& name,
@@ -85,6 +91,8 @@ namespace logid::actions {
     }
 }
 
+// Build an action from a basic config variant.
+// This is the path used for simple button mappings that do not contain gestures.
 std::shared_ptr<Action> Action::makeAction(
         Device* device, const std::string& name,
         std::optional<config::BasicAction>& config,
@@ -95,6 +103,8 @@ std::shared_ptr<Action> Action::makeAction(
     return ret;
 }
 
+// Build an action from a richer config variant, including gesture-backed actions.
+// GestureAction is treated as a special fallback because it is a composite action.
 std::shared_ptr<Action> Action::makeAction(
         Device* device, const std::string& name,
         std::optional<config::Action>& config,
@@ -113,6 +123,8 @@ std::shared_ptr<Action> Action::makeAction(
     }
 }
 
+// Build an action directly from the config variant value.
+// This path is used when the config already stores the specific action type.
 std::shared_ptr<Action> Action::makeAction(
         Device* device, config::BasicAction& action,
         const std::shared_ptr<ipcgull::node>& parent) {
@@ -125,6 +137,8 @@ std::shared_ptr<Action> Action::makeAction(
     return ret;
 }
 
+// Build an action directly from the config variant value.
+// Same logic as the other overload, but for the wider action variant.
 std::shared_ptr<Action> Action::makeAction(
         Device* device, config::Action& action,
         const std::shared_ptr<ipcgull::node>& parent) {
@@ -137,6 +151,8 @@ std::shared_ptr<Action> Action::makeAction(
     return ret;
 }
 
+// Seed the base IPC interface for a specific action name.
+// Every action gets its own namespace under `SERVICE_ROOT_NAME.Action.*`.
 Action::Action(Device* device, const std::string& name, tables t) :
         ipcgull::interface(SERVICE_ROOT_NAME ".Action." + name, std::move(t)),
         _device(device), _pressed(false) {

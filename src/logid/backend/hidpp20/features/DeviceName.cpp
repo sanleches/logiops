@@ -22,6 +22,7 @@ using namespace logid::backend;
 using namespace logid::backend::hidpp20;
 
 namespace {
+    // Fetch the device name in long-packet chunks.
     std::string _getName(uint8_t length,
                          const std::function<std::vector<uint8_t>(std::vector<uint8_t>)>& fcall) {
         uint8_t function_calls = length / hidpp::LongParamLength;
@@ -44,10 +45,12 @@ namespace {
     }
 }
 
+// Bind the name reader to the device.
 DeviceName::DeviceName(hidpp::Device* dev) :
         EssentialFeature(dev, ID) {
 }
 
+// Read the reported name length.
 uint8_t DeviceName::getNameLength() {
     std::vector<uint8_t> params(0);
 
@@ -56,6 +59,7 @@ uint8_t DeviceName::getNameLength() {
     return response[0];
 }
 
+// Fetch the device name in chunks.
 std::string DeviceName::getName() {
     return _getName(getNameLength(), [this]
             (std::vector<uint8_t> params) -> std::vector<uint8_t> {

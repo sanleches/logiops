@@ -23,8 +23,10 @@
 
 using namespace logid::actions;
 
+// IPC name used when this action is exported through D-Bus.
 const char* CycleDPI::interface_name = "CycleDPI";
 
+// Wire the action to the DPI feature and expose the cycle list over IPC.
 CycleDPI::CycleDPI(Device* device, config::CycleDPI& config,
                    [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
         Action(device, interface_name, {
@@ -48,12 +50,14 @@ CycleDPI::CycleDPI(Device* device, config::CycleDPI& config,
     }
 }
 
+// Read the current DPI list in a thread-safe way.
 std::vector<int> CycleDPI::getDPIs() const {
     std::shared_lock lock(_config_mutex);
     auto dpis = _config.dpis.value_or(std::list<int>());
     return {dpis.begin(), dpis.end()};
 }
 
+// Replace the DPI list and restart from the first value.
 void CycleDPI::setDPIs(const std::vector<int>& dpis) {
     std::unique_lock lock(_config_mutex);
     std::lock_guard dpi_lock(_dpi_mutex);
@@ -61,6 +65,7 @@ void CycleDPI::setDPIs(const std::vector<int>& dpis) {
     _current_dpi = _config.dpis->cbegin();
 }
 
+// Advance to the next DPI value and apply it asynchronously.
 void CycleDPI::press() {
     _pressed = true;
     std::shared_lock lock(_config_mutex);
@@ -89,10 +94,12 @@ void CycleDPI::press() {
     }
 }
 
+// Release only clears the pressed marker; the actual change happens on press.
 void CycleDPI::release() {
     _pressed = false;
 }
 
+// Keep the button temporarily diverted while the action is active.
 uint8_t CycleDPI::reprogFlags() const {
     return backend::hidpp20::ReprogControls::TemporaryDiverted;
 }

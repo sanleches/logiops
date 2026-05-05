@@ -28,6 +28,8 @@
 namespace logid {
     class InputDevice;
 
+    // Owns discovery and lifetime management for all devices and receivers.
+    // It also owns the IPC roots that let clients inspect and control them.
     class DeviceManager : public backend::raw::DeviceMonitor {
     public:
 
@@ -40,8 +42,11 @@ namespace logid {
         [[nodiscard]] std::shared_ptr<const ipcgull::node>
         receiversNode() const;
 
+        // Publish a device created from a receiver into the IPC tree so clients
+        // can see it exactly like a directly attached device.
         void addExternalDevice(const std::shared_ptr<Device>& d);
 
+        // Remove a receiver-backed device from IPC when the receiver disconnects.
         void removeExternalDevice(const std::shared_ptr<Device>& d);
 
         std::mutex& mutex() const;
@@ -58,6 +63,7 @@ namespace logid {
     private:
         class DevicesIPC : public ipcgull::interface {
         public:
+            // IPC surface for listing devices and broadcasting add/remove events.
             explicit DevicesIPC(DeviceManager* manager);
 
             void deviceAdded(const std::shared_ptr<Device>& d);
@@ -70,6 +76,7 @@ namespace logid {
 
         class ReceiversIPC : public ipcgull::interface {
         public:
+            // IPC surface for listing receivers and broadcasting add/remove events.
             explicit ReceiversIPC(DeviceManager* manager);
 
             void receiverAdded(const std::shared_ptr<Receiver>& r);

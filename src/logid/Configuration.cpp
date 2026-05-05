@@ -26,6 +26,8 @@ using namespace logid;
 using namespace libconfig;
 using namespace logid::config;
 
+// Load the config file if it exists. If it does not, start from an empty config
+// tree so the daemon can still run and create defaults on demand.
 Configuration::Configuration(std::string config_file) :
         _config_file(std::move(config_file)) {
     if (std::filesystem::exists(_config_file)) {
@@ -41,6 +43,7 @@ Configuration::Configuration(std::string config_file) :
             throw;
         }
 
+        // Copy the parsed libconfig tree into the generated runtime schema object.
         Config::operator=(get<Config>(_config.getRoot()));
     } else {
         logPrintf(INFO, "Config file does not exist, using empty config.");
@@ -54,7 +57,10 @@ Configuration::Configuration() {
     devices.emplace();
 }
 
+// Serialize the in-memory config model back to disk.
+// This writes the current runtime state, not the original file contents.
 void Configuration::save() {
+    // libconfig writes from its own tree, so synchronize it from the schema object first.
     config::set(_config.getRoot(), *this);
     try {
         _config.writeFile(_config_file.c_str());
@@ -69,6 +75,7 @@ void Configuration::save() {
     }
 }
 
+// Expose the config save action over IPC so clients can persist runtime edits.
 Configuration::IPC::IPC(Configuration* config) :
         ipcgull::interface(SERVICE_ROOT_NAME ".Config", {
                 {"Save", {config, &Configuration::save}}

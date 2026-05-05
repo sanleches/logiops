@@ -26,7 +26,9 @@
 namespace logid {
     class ReceiverNickname {
     public:
-        explicit ReceiverNickname(const std::shared_ptr<DeviceManager>& manager);
+    // Reserve a short numeric identity for the lifetime of a receiver node so
+    // its IPC path stays compact and stable while the receiver is alive.
+    explicit ReceiverNickname(const std::shared_ptr<DeviceManager>& manager);
 
         ReceiverNickname() = delete;
 
@@ -41,6 +43,9 @@ namespace logid {
         const std::weak_ptr<DeviceManager> _manager;
     };
 
+    // Wraps a Logitech receiver and manages the wireless devices discovered
+    // through that receiver. It acts as the bridge between pair slots and
+    // logical `Device` objects.
     class Receiver : public backend::hidpp10::ReceiverMonitor,
                      public ipcgull::object {
     public:
@@ -49,6 +54,7 @@ namespace logid {
 
         ~Receiver() noexcept override;
 
+        // Construct a receiver and attach it to the monitor and IPC tree.
         static std::shared_ptr<Receiver> make(
                 const std::string& path,
                 const std::shared_ptr<DeviceManager>& manager);
@@ -62,6 +68,7 @@ namespace logid {
         [[nodiscard]] std::vector<std::tuple<int, uint16_t, std::string, uint32_t>>
         pairedDevices() const;
 
+        // Start or stop the receiver pairing flow.
         void startPair(uint8_t timeout);
 
         void stopPair();
@@ -90,6 +97,7 @@ namespace logid {
 
         class IPC : public ipcgull::interface {
         public:
+            // IPC facade for pairing, unpairing, and receiver status.
             explicit IPC(Receiver* receiver);
         };
 

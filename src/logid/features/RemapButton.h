@@ -26,28 +26,40 @@
 namespace logid::features {
     class RemapButton;
 
+    // Exposes one remappable control button and its current action mapping.
+    // Each instance mirrors one HID++ control ID and the action assigned to it.
     class Button : public ipcgull::object {
     public:
         typedef backend::hidpp20::ReprogControls::ControlInfo Info;
         typedef std::function<void(std::shared_ptr<actions::Action>)>
                 ConfigFunction;
 
+        // Build a Button wrapper for one control ID.
+        // The factory hides the internal self-reference and IPC-node setup.
         static std::shared_ptr<Button> make(
                 Info info, int index, Device* device, ConfigFunction conf_func,
                 const std::shared_ptr<ipcgull::node>& root, config::Button& config);
 
+        // Forward a press event to the mapped action.
         void press();
 
+        // Forward a release event to the mapped action.
         void release() const;
 
+        // Forward raw XY motion when the action consumes it.
         void move(int16_t x, int16_t y);
 
+        // Swap to a different profile's button mapping.
         void setProfile(config::Button& config);
 
+        // Return the IPC node for this button.
         [[nodiscard]] std::shared_ptr<ipcgull::node> node() const;
 
+        // Re-emit the current action config into the hardware state.
+        // This keeps the device's divert flags aligned with the current profile.
         void configure() const;
 
+        // Tell callers whether the mapped action is currently active.
         bool pressed() const;
 
     private:
@@ -89,12 +101,17 @@ namespace logid::features {
         std::shared_ptr<IPC> _ipc_interface;
     };
 
+    // Feature that discovers remappable buttons and attaches actions to them.
+    // It owns the mapping between hardware control IDs and user-selected actions.
     class RemapButton : public DeviceFeature {
     public:
+        // Re-apply button mappings from the current profile.
         void configure() final;
 
+        // Register the device event handler that watches button changes.
         void listen() final;
 
+        // Swap to a different profile's remap settings.
         void setProfile(config::Profile& profile) final;
 
     protected:

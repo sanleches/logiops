@@ -23,6 +23,7 @@
 #include <memory>
 
 namespace logid::backend::hidpp20 {
+    // Base HID++ feature for smart-shift control.
     class SmartShift : public Feature {
     public:
         static const uint16_t ID = FeatureID::SMART_SHIFT;
@@ -34,6 +35,7 @@ namespace logid::backend::hidpp20 {
             SetStatus = 1
         };
 
+        // Bind the feature to a device.
         explicit SmartShift(Device* dev);
 
         struct Defaults {
@@ -49,14 +51,19 @@ namespace logid::backend::hidpp20 {
             bool setActive, setAutoDisengage, setTorque;
         };
 
+        // Tell callers whether the device exposes torque control.
         [[nodiscard]] virtual bool supportsTorque() { return false; }
 
+        // Read the default feature values.
         [[nodiscard]] virtual Defaults getDefaults();
 
+        // Read the current feature values.
         [[nodiscard]] virtual Status getStatus();
 
+        // Update the feature state on the device.
         virtual void setStatus(Status status);
 
+        // Try the newest supported smart-shift version.
         [[nodiscard]] static std::shared_ptr<SmartShift> autoVersion(Device* dev);
 
     protected:
@@ -75,6 +82,7 @@ namespace logid::backend::hidpp20 {
             SetStatus = 2
         };
 
+        // Bind the V2 smart-shift feature to a device.
         explicit SmartShiftV2(Device* dev);
 
         [[nodiscard]] bool supportsTorque() final;

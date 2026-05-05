@@ -23,12 +23,14 @@
 #include <backend/hidpp/Report.h>
 
 namespace logid::backend::hidpp20 {
+    // HID++ feature that reports wireless reconnection and power events.
     class WirelessDeviceStatus : public Feature {
     public:
         static constexpr uint16_t ID = FeatureID::WIRELESS_DEVICE_STATUS;
 
         [[nodiscard]] uint16_t getID() final { return ID; }
 
+        // Bind the status reader to a device.
         explicit WirelessDeviceStatus(Device* dev);
 
         enum Event : uint8_t {
@@ -41,6 +43,7 @@ namespace logid::backend::hidpp20 {
             bool powerSwitch;
         };
 
+        // Decode the broadcast status report.
         static Status statusBroadcastEvent(const hidpp::Report& report);
     };
 }

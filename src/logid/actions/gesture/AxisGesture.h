@@ -21,17 +21,22 @@
 #include <actions/gesture/Gesture.h>
 
 namespace logid::actions {
+    // Gesture that turns directional movement into an axis-based virtual scroll.
     class AxisGesture : public Gesture {
     public:
         static const char* interface_name;
 
+        // Bind the gesture to the axis config and virtual input axis.
         AxisGesture(Device* device, config::AxisGesture& config,
                     const std::shared_ptr<ipcgull::node>& parent);
 
+        // Start the gesture and initialize threshold accumulation.
         void press(bool init_threshold) final;
 
+        // Release is a no-op for axis gestures.
         void release(bool primary) final;
 
+        // Convert gesture movement into virtual axis events.
         void move(int16_t axis) final;
 
         [[nodiscard]] bool wheelCompatibility() const final;

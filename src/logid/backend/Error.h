@@ -22,11 +22,13 @@
 #include <stdexcept>
 
 namespace logid::backend {
+    // Thrown when a device is known but not yet ready for initialization.
     class DeviceNotReady : public std::exception {
     public:
         [[nodiscard]] const char* what() const noexcept override;
     };
 
+    // Thrown when I/O work times out while waiting on a device.
     class TimeoutError : public std::exception {
     public:
         TimeoutError() = default;

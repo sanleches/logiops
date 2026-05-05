@@ -25,8 +25,10 @@
 using namespace logid::actions;
 using namespace logid::backend;
 
+// IPC name used when this action is exported through D-Bus.
 const char* ToggleSmartShift::interface_name = "ToggleSmartShift";
 
+// Look up the SmartShift feature and remember whether the device supports it.
 ToggleSmartShift::ToggleSmartShift(
         Device* dev,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
@@ -39,6 +41,7 @@ ToggleSmartShift::ToggleSmartShift(
                   _device->hidpp20().deviceIndex());
 }
 
+// Toggle the feature on a worker thread so the input callback stays fast.
 void ToggleSmartShift::press() {
     _pressed = true;
     if (_smartshift) {
@@ -53,10 +56,12 @@ void ToggleSmartShift::press() {
     }
 }
 
+// Release only clears the pressed marker.
 void ToggleSmartShift::release() {
     _pressed = false;
 }
 
+// Mark the button as temporarily diverted while this action is active.
 uint8_t ToggleSmartShift::reprogFlags() const {
     return hidpp20::ReprogControls::TemporaryDiverted;
 }

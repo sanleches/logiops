@@ -20,9 +20,11 @@
 
 using namespace logid::backend::hidpp20;
 
+// Bind the wireless status feature to the device.
 WirelessDeviceStatus::WirelessDeviceStatus(Device* dev) : Feature(dev, ID) {
 }
 
+// Decode the broadcast status report.
 WirelessDeviceStatus::Status WirelessDeviceStatus::statusBroadcastEvent(
         const hidpp::Report& report) {
     assert(report.function() == StatusBroadcast);

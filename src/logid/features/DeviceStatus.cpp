@@ -21,6 +21,7 @@
 using namespace logid::features;
 using namespace logid::backend;
 
+// Wire the wireless status backend unless the device is already behind a receiver.
 DeviceStatus::DeviceStatus(logid::Device* dev) : DeviceFeature(dev) {
     /* This feature is redundant on receivers since the receiver
      * handles wakeup/sleep events. If the device is connected on a
@@ -37,10 +38,13 @@ DeviceStatus::DeviceStatus(logid::Device* dev) : DeviceFeature(dev) {
     }
 }
 
+// No device state needs to be pushed during configure.
 void DeviceStatus::configure() {
     // Do nothing
 }
 
+// Wake the device when the firmware says a reconnection is needed.
+// The short delay gives the receiver time to settle before the wakeup call.
 void DeviceStatus::listen() {
     if (_ev_handler.empty()) {
         _ev_handler = _device->hidpp20().addEventHandler(
@@ -63,5 +67,6 @@ void DeviceStatus::listen() {
     }
 }
 
+// This feature has no profile-specific state to switch.
 void DeviceStatus::setProfile(config::Profile&) {
 }

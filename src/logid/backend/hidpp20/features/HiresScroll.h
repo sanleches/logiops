@@ -23,6 +23,7 @@
 #include <backend/hidpp/Report.h>
 
 namespace logid::backend::hidpp20 {
+    // HID++ feature for high-resolution scrolling and ratchet control.
     class HiresScroll : public Feature {
     public:
         ///TODO: Hires scroll V1?
@@ -69,20 +70,27 @@ namespace logid::backend::hidpp20 {
             int16_t deltaV;
         };
 
+        // Bind the hires-scroll feature to a device.
         explicit HiresScroll(Device* device);
 
+        // Read the capability block.
         Capabilities getCapabilities();
 
+        // Read the current mode bits.
         uint8_t getMode();
 
+        // Write new mode bits.
         void setMode(uint8_t mode);
 
         [[maybe_unused]]
+        // Read the ratchet state.
         bool getRatchetState();
 
+        // Decode a wheel movement report.
         static WheelStatus wheelMovementEvent(const hidpp::Report& report);
 
         [[maybe_unused]]
+        // Decode a ratchet switch report.
         static RatchetState ratchetSwitchEvent(const hidpp::Report& report);
     };
 }

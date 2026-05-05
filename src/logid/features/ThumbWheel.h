@@ -24,14 +24,21 @@
 #include <backend/hidpp/Device.h>
 
 namespace logid::features {
+    // Feature wrapper for the thumb wheel, its gestures, and its IPC controls.
+    // It translates the hardware's rotation/touch/proxy state into a set of
+    // user-defined gestures and actions.
     class ThumbWheel : public DeviceFeature {
     public:
+        // Connect the wrapper to the active device and profile.
         explicit ThumbWheel(Device* dev);
 
+        // Apply the current thumb wheel settings to the hardware.
         void configure() final;
 
+        // Install the event handler that watches thumb wheel reports.
         void listen() final;
 
+        // Switch the wrapper to a different profile's thumb wheel config.
         void setProfile(config::Profile& profile) final;
 
     private:
@@ -43,6 +50,7 @@ namespace logid::features {
 
         class IPC : public ipcgull::interface {
         public:
+            // Expose thumb wheel settings over IPC.
             explicit IPC(ThumbWheel* parent);
 
             [[nodiscard]] std::tuple<bool, bool> getConfig() const;

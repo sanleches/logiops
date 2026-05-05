@@ -25,22 +25,32 @@
 #include <shared_mutex>
 
 namespace logid::features {
+    // Feature that controls the scrolling resistance / freewheel behavior.
+    // Logitech uses SmartShift to switch the wheel between ratcheted and free
+    // spinning modes, sometimes with extra tuning for how quickly it disengages.
     class SmartShift : public DeviceFeature {
     public:
+        // Apply SmartShift configuration from the current profile.
         void configure() final;
 
+        // SmartShift does not need a runtime event handler.
         void listen() final;
 
+        // Swap to a different profile's SmartShift settings.
         void setProfile(config::Profile& profile) final;
 
         typedef backend::hidpp20::SmartShift::Status Status;
 
+        // Read the current device status.
         [[nodiscard]] Status getStatus() const;
 
+        // Write one or more SmartShift fields back to the device.
         void setStatus(Status status);
 
+        // Return the device's default SmartShift values.
         [[nodiscard]] const backend::hidpp20::SmartShift::Defaults& getDefaults() const;
 
+        // Tell callers whether the device exposes the torque control field.
         [[nodiscard]] bool supportsTorque() const;
 
     protected:

@@ -22,24 +22,36 @@
 
 using namespace logid::backend::hidpp20;
 
+// Report that the requested feature is not supported by the device.
+// The `what()` string is intentionally short because the feature ID already
+// identifies the unsupported capability.
 const char* UnsupportedFeature::what() const noexcept {
     return "Unsupported feature";
 }
 
+// Return the unsupported feature ID.
+// Callers often use this to print a better error message or choose a fallback.
 uint16_t UnsupportedFeature::code() const noexcept {
     return _f_id;
 }
 
+// Invoke a feature function and wait for the response payload.
+// The base class delegates to the parent device so feature code stays small.
 std::vector<uint8_t> Feature::callFunction(uint8_t function_id,
                                            std::vector<uint8_t>& params) {
     return _device->callFunction(_index, function_id, params);
 }
 
+// Invoke a feature function without waiting for a response payload.
+// Used for commands that should not block on a reply.
 void Feature::callFunctionNoResponse(uint8_t function_id,
-                                     std::vector<uint8_t>& params) {
+                                      std::vector<uint8_t>& params) {
     _device->callFunctionNoResponse(_index, function_id, params);
 }
 
+// Resolve the feature index from its compile-time ID, or fall back to ROOT.
+// Runtime feature indices are discovered by asking the ROOT feature where a
+// compile-time feature ID lives on the current device.
 Feature::Feature(Device* dev, uint16_t _id) : _device(dev) {
     _index = hidpp20::FeatureID::ROOT;
 
@@ -63,6 +75,7 @@ Feature::Feature(Device* dev, uint16_t _id) : _device(dev) {
     }
 }
 
+// Return the resolved feature index used in HID++ requests.
 uint8_t Feature::featureIndex() const {
     return _index;
 }

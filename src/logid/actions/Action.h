@@ -31,6 +31,7 @@ namespace logid {
 }
 
 namespace logid::actions {
+    // Raised when a config action name does not map to a supported implementation.
     class InvalidAction : public std::exception {
     public:
         InvalidAction() = default;
@@ -45,8 +46,12 @@ namespace logid::actions {
         std::string _action;
     };
 
+    // Base class for configurable device actions exposed over IPC.
+    // Every concrete action owns its own IPC interface so clients can inspect or
+    // tweak it at runtime.
     class Action : public ipcgull::interface {
     public:
+        // Build an action from a config value or action name.
         static std::shared_ptr<Action> makeAction(
                 Device* device, const std::string& name,
                 std::optional<config::BasicAction>& config,
@@ -65,12 +70,16 @@ namespace logid::actions {
                 Device* device, config::Action& action,
                 const std::shared_ptr<ipcgull::node>& parent);
 
+        // Action lifecycle hooks invoked by device input.
+        // `press()` starts the behavior, `release()` ends it, and `move()` is
+        // only used by actions that care about motion.
         virtual void press() = 0;
 
         virtual void release() = 0;
 
         virtual void move([[maybe_unused]] int16_t x, [[maybe_unused]] int16_t y) { }
 
+        // Return whether the action currently considers itself active.
         virtual bool pressed() {
             return _pressed;
         }
@@ -86,6 +95,8 @@ namespace logid::actions {
         std::atomic<bool> _pressed;
         mutable std::shared_mutex _config_mutex;
 
+        // Return a weak pointer to this action as a specific subtype.
+        // Async callbacks use this to avoid touching destroyed objects.
         template <typename T>
         [[nodiscard]] std::weak_ptr<T> self() const {
             return std::dynamic_pointer_cast<T>(_self.lock());

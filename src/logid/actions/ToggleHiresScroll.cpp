@@ -24,8 +24,10 @@
 using namespace logid::actions;
 using namespace logid::backend;
 
+// IPC name used when this action is exported through D-Bus.
 const char* ToggleHiresScroll::interface_name = "ToggleHiresScroll";
 
+// Look up the HiResScroll feature and remember whether the device supports it.
 ToggleHiresScroll::ToggleHiresScroll(
         Device* dev,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
@@ -38,6 +40,7 @@ ToggleHiresScroll::ToggleHiresScroll(
                   _device->hidpp20().devicePath().c_str());
 }
 
+// Flip the HiRes bit on a worker thread so the button path stays responsive.
 void ToggleHiresScroll::press() {
     _pressed = true;
     if (_hires_scroll) {
@@ -51,10 +54,12 @@ void ToggleHiresScroll::press() {
     }
 }
 
+// Release only clears the pressed marker.
 void ToggleHiresScroll::release() {
     _pressed = false;
 }
 
+// Keep the button temporarily diverted while this action is active.
 uint8_t ToggleHiresScroll::reprogFlags() const {
     return hidpp20::ReprogControls::TemporaryDiverted;
 }

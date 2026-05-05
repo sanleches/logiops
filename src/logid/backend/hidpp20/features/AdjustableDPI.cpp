@@ -19,15 +19,18 @@
 
 using namespace logid::backend::hidpp20;
 
+// Bind the DPI feature to the device.
 AdjustableDPI::AdjustableDPI(Device* dev) : Feature(dev, ID) {
 }
 
+// Return the number of sensors that report DPI values.
 uint8_t AdjustableDPI::getSensorCount() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetSensorCount, params);
     return response[0];
 }
 
+// Parse the device's supported DPI list for one sensor.
 AdjustableDPI::SensorDPIList AdjustableDPI::getSensorDPIList(uint8_t sensor) {
     SensorDPIList dpi_list{};
     std::vector<uint8_t> params(1);
@@ -51,6 +54,7 @@ AdjustableDPI::SensorDPIList AdjustableDPI::getSensorDPIList(uint8_t sensor) {
     return dpi_list;
 }
 
+// Read the sensor's factory-default DPI.
 uint16_t AdjustableDPI::getDefaultSensorDPI(uint8_t sensor) {
     std::vector<uint8_t> params(1);
     params[0] = sensor;
@@ -62,6 +66,7 @@ uint16_t AdjustableDPI::getDefaultSensorDPI(uint8_t sensor) {
     return default_dpi;
 }
 
+// Read the sensor's current DPI.
 uint16_t AdjustableDPI::getSensorDPI(uint8_t sensor) {
     std::vector<uint8_t> params(1);
     params[0] = sensor;
@@ -73,6 +78,7 @@ uint16_t AdjustableDPI::getSensorDPI(uint8_t sensor) {
     return dpi;
 }
 
+// Write a new DPI value for one sensor.
 void AdjustableDPI::setSensorDPI(uint8_t sensor, uint16_t dpi) {
     std::vector<uint8_t> params(3);
     params[0] = sensor;

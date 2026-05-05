@@ -34,6 +34,8 @@
 using namespace logid;
 using namespace logid::backend;
 
+// Nicknames keep device node names stable and compact while the device is alive.
+// They are also easier for IPC clients to consume than full sysfs or evdev paths.
 DeviceNickname::DeviceNickname(const std::shared_ptr<DeviceManager>& manager) :
         _nickname(manager->newDeviceNickname()), _manager(manager) {
 }
@@ -57,6 +59,8 @@ namespace logid {
     };
 }
 
+// Create a device from a direct path, keep a self-reference for async work,
+// and wire the finished object into the IPC tree.
 std::shared_ptr<Device> Device::make(
         std::string path, backend::hidpp::DeviceIndex index,
         std::shared_ptr<DeviceManager> manager) {
@@ -69,6 +73,8 @@ std::shared_ptr<Device> Device::make(
     return ret;
 }
 
+// Create a device from an already opened raw device wrapper.
+// This is used when we already have a prepared raw backend object.
 std::shared_ptr<Device> Device::make(
         std::shared_ptr<backend::raw::RawDevice> raw_device,
         backend::hidpp::DeviceIndex index,
@@ -82,6 +88,8 @@ std::shared_ptr<Device> Device::make(
     return ret;
 }
 
+// Create a device that hangs off a receiver connection.
+// Receiver-backed devices share the same logical Device abstraction.
 std::shared_ptr<Device> Device::make(
         Receiver* receiver, backend::hidpp::DeviceIndex index,
         std::shared_ptr<DeviceManager> manager) {
@@ -137,18 +145,24 @@ Device::Device(Receiver* receiver, hidpp::DeviceIndex index,
     _init();
 }
 
+// Load the device config, attach supported features, set up reset behavior,
+// and run the initial configuration pass.
 void Device::_init() {
     logPrintf(INFO, "Device found: %s on %s:%d", name().c_str(),
               hidpp20().devicePath().c_str(), _index);
 
     {
         std::unique_lock lock(_profile_mutex);
+        // Start on the configured default profile, creating it if needed.
+        // The device always needs one active profile before features can be built.
         _profile = _config.profiles.find(_config.default_profile);
         if (_profile == _config.profiles.end())
             _profile = _config.profiles.insert({_config.default_profile, {}}).first;
         _profile_name = _config.default_profile;
     }
 
+    // Optional features are attached opportunistically; unsupported ones are skipped.
+    // This lets one binary support many mouse models without special-case code.
     _addFeature<features::DPI>("dpi");
     _addFeature<features::SmartShift>("smartshift");
     _addFeature<features::HiresScroll>("hiresscroll");
@@ -182,6 +196,8 @@ void Device::sleep() {
     }
 }
 
+// Rebuild feature state when the device becomes available again.
+// This is the central "apply all settings now" path.
 void Device::wakeup() {
     std::lock_guard<std::mutex> lock(_state_lock);
 
@@ -195,6 +211,7 @@ void Device::wakeup() {
     logPrintf(INFO, "%s:%d woke up.", _path.c_str(), _index);
 }
 
+// Reset the device and re-run feature configuration.
 void Device::reconfigure() {
     reset();
 
@@ -202,6 +219,9 @@ void Device::reconfigure() {
         feature.second->configure();
 }
 
+// Attempt to invoke the device-specific reset feature if one exists.
+// Some devices need a firmware reset call before their feature state matches
+// the current profile.
 void Device::reset() {
     if (_reset_mechanism)
         (*_reset_mechanism)();
@@ -226,6 +246,8 @@ std::shared_ptr<ipcgull::node> Device::ipcNode() const {
     return _ipc_node;
 }
 
+// Return the set of known profile names for IPC clients.
+// This is a snapshot taken under lock so callers see a consistent view.
 std::vector<std::string> Device::getProfiles() const {
     std::shared_lock lock(_profile_mutex);
 
@@ -237,6 +259,8 @@ std::vector<std::string> Device::getProfiles() const {
     return ret;
 }
 
+// Switch the active profile and push the new profile state into each feature.
+// Each feature owns its own config fragment, so they are re-bound one by one.
 void Device::setProfile(const std::string& profile) {
     std::unique_lock lock(_profile_mutex);
 
@@ -251,6 +275,8 @@ void Device::setProfile(const std::string& profile) {
     reconfigure();
 }
 
+// Defer profile switching to the worker queue to avoid blocking input handling.
+// This keeps event processing responsive while the new profile is applied.
 void Device::setProfileDelayed(const std::string& profile) {
     run_task([self_weak = _self, profile](){
         if (auto self = self_weak.lock())
@@ -258,6 +284,8 @@ void Device::setProfileDelayed(const std::string& profile) {
     });
 }
 
+// Remove a stored profile unless it is currently active or the default.
+// The daemon refuses to delete the profile it is actively using.
 void Device::removeProfile(const std::string& profile) {
     std::unique_lock lock(_profile_mutex);
 
@@ -269,6 +297,8 @@ void Device::removeProfile(const std::string& profile) {
     _config.profiles.erase(profile);
 }
 
+// Clear profile contents while preserving the profile entry itself.
+// This is safer than deleting the profile because the name can stay in place.
 void Device::clearProfile(const std::string& profile) {
     std::unique_lock lock(_profile_mutex);
 
@@ -298,6 +328,8 @@ hidpp20::Device& Device::hidpp20() {
     return *_hidpp20;
 }
 
+// Build a callable reset path only when the device exposes the HID++ reset feature.
+// If the feature is missing, reset() simply becomes a logged no-op.
 void Device::_makeResetMechanism() {
     try {
         hidpp20::Reset reset(_hidpp20.get());
@@ -333,10 +365,12 @@ Device::IPC::IPC(Device* device) :
                 }), _device(*device) {
 }
 
+// Emit the current awake/asleep state to IPC clients.
 void Device::IPC::notifyStatus() const {
     emit_signal("StatusChanged", (bool) (_device._awake));
 }
 
+// Normalize device config storage so every device has a concrete profile map.
 config::Device& Device::_getConfig(
         const std::shared_ptr<DeviceManager>& manager,
         const std::string& name) {

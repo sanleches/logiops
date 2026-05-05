@@ -38,6 +38,7 @@ DEFINE_REPROG(ReprogControlsV3, ReprogControlsV2_2)
 DEFINE_REPROG(ReprogControlsV4, ReprogControlsV3)
 
 template<typename T>
+// Try to create a remapping backend version if the device supports it.
 std::shared_ptr<T> make_reprog(Device* dev) {
     try {
         return std::make_shared<T>(dev);
@@ -46,6 +47,7 @@ std::shared_ptr<T> make_reprog(Device* dev) {
     }
 }
 
+// Prefer the newest supported remapping implementation.
 std::shared_ptr<ReprogControls> ReprogControls::autoVersion(Device* dev) {
     if (auto v4 = make_reprog<ReprogControlsV4>(dev)) {
         return v4;
@@ -60,12 +62,14 @@ std::shared_ptr<ReprogControls> ReprogControls::autoVersion(Device* dev) {
     return std::make_shared<ReprogControls>(dev);
 }
 
+// Read how many remappable controls the device exposes.
 uint8_t ReprogControls::getControlCount() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetControlCount, params);
     return response[0];
 }
 
+// Read metadata for one control entry.
 ReprogControls::ControlInfo ReprogControls::getControlInfo(uint8_t index) {
     std::vector<uint8_t> params(1);
     ControlInfo info{};
@@ -84,6 +88,7 @@ ReprogControls::ControlInfo ReprogControls::getControlInfo(uint8_t index) {
     return info;
 }
 
+// Populate the cached control-ID map on first use.
 void ReprogControls::initCidMap() {
     std::unique_lock<std::mutex> lock(_cids_populating);
     if (_cids_initialized)
@@ -96,11 +101,13 @@ void ReprogControls::initCidMap() {
     _cids_initialized = true;
 }
 
+// Return the cached control table.
 const std::map<uint16_t, ReprogControls::ControlInfo>&
 ReprogControls::getControls() const {
     return _cids;
 }
 
+// Look up control metadata by control ID.
 ReprogControls::ControlInfo ReprogControls::getControlIdInfo(uint16_t cid) {
     if (!_cids_initialized)
         initCidMap();
@@ -112,8 +119,9 @@ ReprogControls::ControlInfo ReprogControls::getControlIdInfo(uint16_t cid) {
         return it->second;
 }
 
+// Read reporting flags through the emulated pre-V4 path.
 [[maybe_unused]] ReprogControls::ControlInfo ReprogControls::getControlReporting(uint16_t cid) {
-    // Emulate this function, only Reprog controls v4 supports this
+    // Emulate this function, only Reprog controls v4 supports this.
     auto info = getControlIdInfo(cid);
 
     ControlInfo report{};
@@ -129,12 +137,14 @@ ReprogControls::ControlInfo ReprogControls::getControlIdInfo(uint16_t cid) {
     return report;
 }
 
+// Pre-V4 firmware cannot write reporting flags, so this is a no-op.
 void ReprogControls::setControlReporting(uint16_t cid, ControlInfo info) {
     // This function does not exist pre-v4 and cannot be emulated, ignore.
     (void) cid;
     (void) info; // Suppress unused warnings
 }
 
+// Decode the list of diverted button control IDs.
 std::set<uint16_t> ReprogControls::divertedButtonEvent(
         const hidpp::Report& report) {
     assert(report.function() == DivertedButtonEvent);
@@ -151,6 +161,7 @@ std::set<uint16_t> ReprogControls::divertedButtonEvent(
     return buttons;
 }
 
+// Decode the diverted raw-XY event payload.
 ReprogControls::Move ReprogControls::divertedRawXYEvent(const hidpp::Report
                                                         & report) {
     assert(report.function() == DivertedRawXYEvent);
@@ -160,6 +171,7 @@ ReprogControls::Move ReprogControls::divertedRawXYEvent(const hidpp::Report
     return move;
 }
 
+// Read reporting flags on V4 firmware.
 ReprogControls::ControlInfo ReprogControlsV4::getControlReporting(uint16_t cid) {
     std::vector<uint8_t> params(2);
     ControlInfo info{};
@@ -173,6 +185,7 @@ ReprogControls::ControlInfo ReprogControlsV4::getControlReporting(uint16_t cid) 
     return info;
 }
 
+// Write reporting flags on V4 firmware.
 void ReprogControlsV4::setControlReporting(uint16_t cid, ControlInfo info) {
     std::vector<uint8_t> params(5);
     params[0] = (cid >> 8) & 0xff;

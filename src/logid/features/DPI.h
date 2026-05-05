@@ -25,16 +25,24 @@
 #include <shared_mutex>
 
 namespace logid::features {
+    // Feature that manages per-sensor DPI settings and exposes them over IPC.
+    // Some Logitech devices expose one DPI value per sensor, while others only
+    // have a single shared DPI. This wrapper hides that difference from IPC.
     class DPI : public DeviceFeature {
     public:
+        // Apply configured DPI values to the device.
         void configure() final;
 
+        // No runtime event stream is needed for DPI changes.
         void listen() final;
 
+        // Swap to a different profile's DPI settings.
         void setProfile(config::Profile& profile) final;
 
+        // Read the current DPI for one sensor.
         uint16_t getDPI(uint8_t sensor = 0);
 
+        // Set the DPI for one sensor, clamping to supported values.
         void setDPI(uint16_t dpi, uint8_t sensor = 0);
 
     protected:

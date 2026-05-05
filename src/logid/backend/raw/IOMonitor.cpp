@@ -28,6 +28,7 @@ extern "C"
 
 using namespace logid::backend::raw;
 
+// Store callbacks for one monitored file descriptor.
 IOHandler::IOHandler(std::function<void()> r,
                      std::function<void()> hup,
                      std::function<void()> err) :
@@ -36,6 +37,7 @@ IOHandler::IOHandler(std::function<void()> r,
         error(std::move(err)) {
 }
 
+// Set up epoll, eventfd, and the background I/O thread.
 IOMonitor::IOMonitor() : _epoll_fd(epoll_create1(0)),
                          _event_fd(eventfd(0, EFD_NONBLOCK)) {
     if (_epoll_fd < 0) {
@@ -64,6 +66,7 @@ IOMonitor::IOMonitor() : _epoll_fd(epoll_create1(0)),
     });
 }
 
+// Stop the monitor and release all kernel resources.
 IOMonitor::~IOMonitor() noexcept {
     _stop();
 
@@ -74,6 +77,7 @@ IOMonitor::~IOMonitor() noexcept {
         ::close(_epoll_fd);
 }
 
+// Main dispatch loop that forwards read/hangup/error events.
 void IOMonitor::_listen() {
     std::unique_lock lock(_run_mutex);
     std::vector<struct epoll_event> events;
@@ -125,12 +129,14 @@ void IOMonitor::_listen() {
     }
 }
 
+// Signal the loop to exit and wait for the worker thread.
 void IOMonitor::_stop() noexcept {
     _is_running = false;
     _yield();
     _io_thread->join();
 }
 
+// Temporarily yield the run lock so fd registration can happen safely.
 std::unique_lock<std::mutex> IOMonitor::_yield() noexcept {
     /* Prevent listener thread from grabbing lock during yielding */
     std::unique_lock yield_lock(_yield_mutex);
@@ -144,6 +150,7 @@ std::unique_lock<std::mutex> IOMonitor::_yield() noexcept {
     return run_lock;
 }
 
+// Register one fd with its callback set.
 void IOMonitor::add(int fd, IOHandler handler) {
     const auto lock = _yield();
 
@@ -160,6 +167,7 @@ void IOMonitor::add(int fd, IOHandler handler) {
     }
 }
 
+// Unregister one fd from the epoll set.
 void IOMonitor::remove(int fd) noexcept {
     const auto lock = _yield();
     ::epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, fd, nullptr);

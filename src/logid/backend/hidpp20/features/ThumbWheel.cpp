@@ -21,9 +21,11 @@
 
 using namespace logid::backend::hidpp20;
 
+// Bind the thumb-wheel feature to the device.
 ThumbWheel::ThumbWheel(Device* dev) : Feature(dev, ID) {
 }
 
+// Read the wheel's resolution and feature flags.
 ThumbWheel::ThumbwheelInfo ThumbWheel::getInfo() {
     std::vector<uint8_t> params(0), response;
     ThumbwheelInfo info{};
@@ -41,6 +43,7 @@ ThumbWheel::ThumbwheelInfo ThumbWheel::getInfo() {
     return info;
 }
 
+// Read the current divert/touch/proxy state.
 ThumbWheel::ThumbwheelStatus ThumbWheel::getStatus() {
     std::vector<uint8_t> params(0), response;
     ThumbwheelStatus status{};
@@ -54,6 +57,7 @@ ThumbWheel::ThumbwheelStatus ThumbWheel::getStatus() {
     return status;
 }
 
+// Enable divert mode and optionally invert the wheel.
 ThumbWheel::ThumbwheelStatus ThumbWheel::setStatus(bool divert, bool invert) {
     std::vector<uint8_t> params(2), response;
     ThumbwheelStatus status{};
@@ -67,6 +71,7 @@ ThumbWheel::ThumbwheelStatus ThumbWheel::setStatus(bool divert, bool invert) {
     return status;
 }
 
+// Decode one thumb-wheel report into a typed event.
 ThumbWheel::ThumbwheelEvent ThumbWheel::thumbwheelEvent(const hidpp::Report& report) {
     assert(report.function() == Event);
     ThumbwheelEvent event{};

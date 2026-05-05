@@ -29,6 +29,9 @@ using namespace logid;
 #define FLAG_STR(b) (_wheel_info.capabilities & _thumb_wheel->b ? "YES" : "NO")
 
 namespace {
+    // Build an action only when the config actually names one.
+    // Thumb wheel events can be pure actions like a tap or state changes like
+    // proxy/touch, so the config decides whether a callback exists at all.
     std::shared_ptr<actions::Action> _genAction(
             Device* dev, std::optional<config::BasicAction>& conf,
             const std::shared_ptr<ipcgull::node>& parent) {
@@ -43,6 +46,9 @@ namespace {
         return nullptr;
     }
 
+    // Build a gesture and reject ones that cannot work on a thumb wheel.
+    // Wheel gestures have to support continuous movement, otherwise they would
+    // behave badly when the wheel keeps reporting rotation.
     std::shared_ptr<actions::Gesture> _genGesture(
             Device* dev, std::optional<config::Gesture>& conf,
             const std::shared_ptr<ipcgull::node>& parent, const std::string& direction) {
@@ -65,6 +71,8 @@ namespace {
     }
 }
 
+// Resolve the thumb wheel feature, wire up IPC, and prebuild mappings.
+// The constructor also logs the wheel's capabilities so debugging is easier.
 ThumbWheel::ThumbWheel(Device* dev) : DeviceFeature(dev), _wheel_info(),
                                       _node(dev->ipcNode()->make_child("thumbwheel")),
                                       _left_node(_node->make_child("left")),
@@ -102,6 +110,8 @@ ThumbWheel::ThumbWheel(Device* dev) : DeviceFeature(dev), _wheel_info(),
     _ipc_interface = dev->ipcNode()->make_interface<IPC>(this);
 }
 
+// Rebuild the action and gesture objects from the current profile config.
+// The profile can independently map left turn, right turn, tap, touch, and proxy.
 void ThumbWheel::_makeConfig() {
     if (_config.get().has_value()) {
         auto& conf = _config.get().value();
@@ -113,6 +123,8 @@ void ThumbWheel::_makeConfig() {
     }
 }
 
+// Push divert and invert settings to the device.
+// Divert mode tells the firmware to send events to us instead of handling them itself.
 void ThumbWheel::configure() {
     std::shared_lock lock(_config_mutex);
     auto& config = _config.get();
@@ -123,6 +135,8 @@ void ThumbWheel::configure() {
     }
 }
 
+// Subscribe to thumb wheel events once.
+// The handler stays installed for the device lifetime, so repeated calls are cheap.
 void ThumbWheel::listen() {
     if (_ev_handler.empty()) {
         _ev_handler = _device->hidpp20().addEventHandler(
@@ -139,6 +153,8 @@ void ThumbWheel::listen() {
     }
 }
 
+// Swap in a new profile and rebuild the associated actions.
+// This clears all cached gestures so the new profile starts fresh.
 void ThumbWheel::setProfile(config::Profile& profile) {
     std::unique_lock lock(_config_mutex);
     _config = profile.thumbwheel;
@@ -150,6 +166,9 @@ void ThumbWheel::setProfile(config::Profile& profile) {
     _makeConfig();
 }
 
+// Translate raw wheel reports into gesture and action callbacks.
+// Rotation, tap, proxy, and touch are handled separately because each one has
+// slightly different semantics in the firmware report.
 void ThumbWheel::_handleEvent(hidpp20::ThumbWheel::ThumbwheelEvent event) {
     std::shared_lock lock(_config_mutex);
     if (event.flags & hidpp20::ThumbWheel::SingleTap) {
@@ -215,6 +234,8 @@ void ThumbWheel::_handleEvent(hidpp20::ThumbWheel::ThumbwheelEvent event) {
     }
 }
 
+// Tune a wheel gesture to the hardware's diverted resolution.
+// If the gesture is an axis gesture, use the diverted resolution as its multiplier.
 void ThumbWheel::_fixGesture(const std::shared_ptr<actions::Gesture>& gesture) const {
     try {
         auto axis = std::dynamic_pointer_cast<actions::AxisGesture>(gesture);
@@ -227,6 +248,8 @@ void ThumbWheel::_fixGesture(const std::shared_ptr<actions::Gesture>& gesture) c
         gesture->press(true);
 }
 
+// Publish thumb wheel controls through the daemon's IPC tree.
+// The IPC surface lets clients toggle divert/invert and remap each behavior.
 ThumbWheel::IPC::IPC(ThumbWheel* parent) : ipcgull::interface(
         SERVICE_ROOT_NAME ".ThumbWheel", {
                 {"GetConfig", {this, &IPC::getConfig, {"divert", "invert"}}},
@@ -240,6 +263,7 @@ ThumbWheel::IPC::IPC(ThumbWheel* parent) : ipcgull::interface(
         }, {}, {}), _parent(*parent) {
 }
 
+// Ensure there is a mutable profile object to edit.
 config::ThumbWheel& ThumbWheel::IPC::_parentConfig() {
     auto& config = _parent._config.get();
     if (!config.has_value()) {
@@ -249,6 +273,7 @@ config::ThumbWheel& ThumbWheel::IPC::_parentConfig() {
     return config.value();
 }
 
+// Return the divert and invert flags for callers.
 std::tuple<bool, bool> ThumbWheel::IPC::getConfig() const {
     std::shared_lock lock(_parent._config_mutex);
 
@@ -261,6 +286,7 @@ std::tuple<bool, bool> ThumbWheel::IPC::getConfig() const {
             config.value().invert.value_or(false)};
 }
 
+// Update divert mode and immediately apply it.
 void ThumbWheel::IPC::setDivert(bool divert) {
     std::unique_lock lock(_parent._config_mutex);
 
@@ -270,6 +296,7 @@ void ThumbWheel::IPC::setDivert(bool divert) {
     _parent._thumb_wheel->setStatus(divert, config.invert.value_or(false));
 }
 
+// Update inversion and immediately apply it.
 void ThumbWheel::IPC::setInvert(bool invert) {
     std::unique_lock lock(_parent._config_mutex);
 
@@ -279,6 +306,7 @@ void ThumbWheel::IPC::setInvert(bool invert) {
     _parent._thumb_wheel->setStatus(config.divert.value_or(false), invert);
 }
 
+// Replace the left-turn gesture mapping.
 void ThumbWheel::IPC::setLeft(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 
@@ -300,6 +328,7 @@ void ThumbWheel::IPC::setLeft(const std::string& type) {
     }
 }
 
+// Replace the right-turn gesture mapping.
 void ThumbWheel::IPC::setRight(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 
@@ -320,6 +349,7 @@ void ThumbWheel::IPC::setRight(const std::string& type) {
     }
 }
 
+// Replace the proxy-state action mapping.
 void ThumbWheel::IPC::setProxy(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 
@@ -330,6 +360,7 @@ void ThumbWheel::IPC::setProxy(const std::string& type) {
 }
 
 
+// Replace the tap action mapping.
 void ThumbWheel::IPC::setTap(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 
@@ -340,6 +371,7 @@ void ThumbWheel::IPC::setTap(const std::string& type) {
 }
 
 
+// Replace the touch-state action mapping.
 void ThumbWheel::IPC::setTouch(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 

@@ -24,8 +24,10 @@
 #include <exception>
 
 namespace logid::backend::hidpp10 {
+    // HID++ 1.0 register error identifier used in short reports.
     static constexpr uint8_t ErrorID = 0x8f;
 
+    // Represents an error returned by a HID++ 1.0 register access.
     class Error : public std::exception {
     public:
         enum ErrorCode : uint8_t {
@@ -44,6 +46,7 @@ namespace logid::backend::hidpp10 {
             WrongPINCode = 0x0C
         };
 
+        // Store the register error code and the affected device index.
         Error(uint8_t code, hidpp::DeviceIndex index);
 
         [[nodiscard]] const char* what() const noexcept override;

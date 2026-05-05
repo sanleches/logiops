@@ -20,6 +20,7 @@
 
 using namespace logid::actions;
 
+// NullAction is the explicit no-op placeholder for unassigned buttons.
 const char* NullAction::interface_name = "None";
 
 NullAction::NullAction(

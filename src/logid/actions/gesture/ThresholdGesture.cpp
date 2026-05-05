@@ -21,8 +21,10 @@
 
 using namespace logid::actions;
 
+// IPC name used when this gesture is exported through D-Bus.
 const char* ThresholdGesture::interface_name = "OnRelease";
 
+// Bind the threshold gesture to its config and optional action.
 ThresholdGesture::ThresholdGesture(
         Device* device, config::ThresholdGesture& config,
         const std::shared_ptr<ipcgull::node>& parent) :
@@ -44,16 +46,19 @@ ThresholdGesture::ThresholdGesture(
     }
 }
 
+// Initialize movement tracking for a new gesture sequence.
 void ThresholdGesture::press(bool init_threshold) {
     std::shared_lock lock(_config_mutex);
     _axis = init_threshold ? (int32_t) _config.threshold.value_or(defaults::gesture_threshold) : 0;
     this->_executed = false;
 }
 
+// Clear the one-shot execution state after the gesture ends.
 void ThresholdGesture::release([[maybe_unused]] bool primary) {
     this->_executed = false;
 }
 
+// Accumulate movement and fire the action once the threshold is crossed.
 void ThresholdGesture::move(int16_t axis) {
     _axis += axis;
 
@@ -66,20 +71,24 @@ void ThresholdGesture::move(int16_t axis) {
     }
 }
 
+// Report whether enough movement has accumulated.
 bool ThresholdGesture::metThreshold() const {
     std::shared_lock lock(_config_mutex);
     return _axis >= _config.threshold.value_or(defaults::gesture_threshold);
 }
 
+// Threshold gestures are not designed for wheel-style inputs.
 bool ThresholdGesture::wheelCompatibility() const {
     return false;
 }
 
+// Return the configured threshold value.
 int ThresholdGesture::getThreshold() const {
     std::shared_lock lock(_config_mutex);
     return _config.threshold.value_or(0);
 }
 
+// Update the threshold used for action firing.
 void ThresholdGesture::setThreshold(int threshold) {
     std::unique_lock lock(_config_mutex);
     if (threshold == 0)
@@ -88,6 +97,7 @@ void ThresholdGesture::setThreshold(int threshold) {
         _config.threshold = threshold;
 }
 
+// Replace the action executed when the threshold is first crossed.
 void ThresholdGesture::setAction(const std::string& type) {
     std::unique_lock lock(_config_mutex);
     _action.reset();

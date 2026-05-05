@@ -23,6 +23,9 @@
 #include <actions/gesture/Gesture.h>
 
 namespace logid::actions {
+    // Action that routes one hardware input into multiple directional gestures.
+    // It keeps separate gesture objects for up/down/left/right and chooses which
+    // one to fire based on the motion that actually happened.
     class GestureAction : public Action {
     public:
         static const char* interface_name;
@@ -35,19 +38,33 @@ namespace logid::actions {
             Right
         };
 
+        // Convert a config string like "left" or "up" into an enum value.
+        // IPC uses text because it is easier for humans to read and edit.
         static Direction toDirection(std::string direction);
 
+        // Convert an enum value back into the config string used by IPC.
         static std::string fromDirection(Direction direction);
 
+        // Pick a dominant direction from raw X/Y movement.
+        // This is how the action decides whether a gesture was mostly horizontal
+        // or mostly vertical.
         static Direction toDirection(int32_t x, int32_t y);
 
+        // Bind the action to the gesture config and create the gesture sub-tree.
+        // The IPC node tree mirrors the gesture directions so each one can be edited.
         GestureAction(Device* dev, config::GestureAction& config,
                       const std::shared_ptr<ipcgull::node>& parent);
 
+        // Press resets movement state and primes all gestures.
+        // A press starts a fresh gesture sequence.
         void press() final;
 
+        // Release selects which gesture should actually fire.
+        // The action waits until release so it can decide which direction won.
         void release() final;
 
+        // Feed raw movement into the active direction detectors.
+        // Each directional gesture accumulates the movement it cares about.
         void move(int16_t x, int16_t y) final;
 
         uint8_t reprogFlags() const final;

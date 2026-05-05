@@ -24,15 +24,22 @@
 #include <backend/hidpp20/features/WirelessDeviceStatus.h>
 
 namespace logid::features {
+    // Feature wrapper that watches the device status broadcast stream.
+    // It does not change settings directly; it only reacts when the firmware
+    // says the device needs attention after sleep or reconnect.
     class DeviceStatus : public DeviceFeature {
     public:
+        // No extra configuration is needed for this feature.
         void configure() final;
 
+        // Install the wireless status event listener.
         void listen() final;
 
+        // Device status does not track profile-specific settings.
         void setProfile(config::Profile& profile) final;
 
     protected:
+        // Bind the status watcher to a device.
         explicit DeviceStatus(Device* dev);
 
     private:

@@ -22,8 +22,11 @@
 using namespace logid::features;
 using namespace logid::backend;
 
+// Bind the profile's SmartShift settings to the underlying HID++ feature.
+// The wrapper keeps a live hardware handle and a profile reference so IPC edits
+// can update both without rebuilding the device object.
 SmartShift::SmartShift(Device* device) : DeviceFeature(device),
-                                         _config(device->activeProfile().smartshift) {
+                                          _config(device->activeProfile().smartshift) {
     try {
         _smartshift = hidpp20::SmartShift::autoVersion(&device->hidpp20());
     } catch (hidpp20::UnsupportedFeature& e) {
@@ -39,14 +42,16 @@ SmartShift::SmartShift(Device* device) : DeviceFeature(device),
         if (config.threshold.has_value()) {
             auto& threshold = config.threshold.value();
 
-            /* 0 means no change, clip to 1. */
+            /* 0 means no change, clip to 1 so the firmware sees a real value. */
             if (threshold == 0)
                 threshold = 1;
         }
 
         if (config.torque.has_value()) {
             auto& torque = config.torque.value();
-            /* torque is a percentage, clip between 1-100 */
+            /* torque is a percentage, clip between 1-100 so the UI and firmware
+             * use the same range.
+             */
             if (torque == 0)
                 torque = 1;
             else if (torque > 100)
@@ -57,6 +62,8 @@ SmartShift::SmartShift(Device* device) : DeviceFeature(device),
     _ipc_interface = _device->ipcNode()->make_interface<IPC>(this);
 }
 
+// Apply the SmartShift settings from the current profile, if any.
+// The code only writes fields that are actually present in the config.
 void SmartShift::configure() {
     std::shared_lock lock(_config_mutex);
     auto& config = _config.get();
@@ -77,26 +84,37 @@ void SmartShift::configure() {
     }
 }
 
+// SmartShift does not register additional event handlers.
 void SmartShift::listen() {
 }
 
+// Rebind the feature to a different profile's SmartShift config.
+// The hardware object stays the same; only the saved config reference changes.
 void SmartShift::setProfile(config::Profile& profile) {
     std::unique_lock lock(_config_mutex);
     _config = profile.smartshift;
 }
 
+// Read the current feature status from the device.
+// This is the live hardware value, which may differ from the profile until configure() runs.
 SmartShift::Status SmartShift::getStatus() const {
     return _smartshift->getStatus();
 }
 
+// Write the requested SmartShift state back to the device.
+// The bit flags allow callers to change one setting without touching the others.
 void SmartShift::setStatus(Status status) {
     _smartshift->setStatus(status);
 }
 
+// Return the device's default SmartShift values.
+// The IPC layer uses these when a user clears a setting and wants the firmware default back.
 const hidpp20::SmartShift::Defaults& SmartShift::getDefaults() const {
     return _defaults;
 }
 
+// Tell callers whether this device supports torque control.
+// Some devices only support on/off and threshold, so the UI can hide torque controls.
 bool SmartShift::supportsTorque() const {
     return _torque_support;
 }

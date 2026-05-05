@@ -22,20 +22,26 @@
 #include <actions/Action.h>
 
 namespace logid::actions {
+    // Action that emits one or more virtual key presses through the daemon's input device.
     class KeypressAction : public Action {
     public:
         static const char* interface_name;
 
+        // Bind the action to the virtual input device and config entry.
         KeypressAction(Device* dev,
                        config::KeypressAction& config,
                        const std::shared_ptr<ipcgull::node>& parent);
 
+        // Press sends the configured key sequence down.
         void press() final;
 
+        // Release sends the matching key releases.
         void release() final;
 
+        // Return the configured key list as readable names.
         [[nodiscard]] std::vector<std::string> getKeys() const;
 
+        // Replace the configured key list from readable names.
         void setKeys(const std::vector<std::string>& keys);
 
         [[nodiscard]] uint8_t reprogFlags() const final;

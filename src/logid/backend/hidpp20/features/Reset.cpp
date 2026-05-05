@@ -19,9 +19,11 @@
 
 using namespace logid::backend::hidpp20;
 
+// Bind the reset helper to the device.
 Reset::Reset(Device* device) : Feature(device, ID) {
 }
 
+// Read the active profile number.
 uint16_t Reset::getProfile() {
     std::vector<uint8_t> params(0);
     auto results = callFunction(GetProfile, params);
@@ -31,6 +33,7 @@ uint16_t Reset::getProfile() {
     return profile;
 }
 
+// Reset the device to the requested profile.
 void Reset::reset(uint16_t profile) {
     std::vector<uint8_t> params(2);
     params[0] = (profile >> 8) & 0xff;

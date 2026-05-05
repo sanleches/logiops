@@ -20,8 +20,10 @@
 
 using namespace logid::actions;
 
+// IPC name used when this gesture is exported through D-Bus.
 const char* ReleaseGesture::interface_name = "OnRelease";
 
+// Bind the release-triggered gesture to its config and optional action.
 ReleaseGesture::ReleaseGesture(Device* device, config::ReleaseGesture& config,
                                const std::shared_ptr<ipcgull::node>& parent) :
         Gesture(device, parent, interface_name, {
@@ -37,6 +39,7 @@ ReleaseGesture::ReleaseGesture(Device* device, config::ReleaseGesture& config,
         _action = Action::makeAction(device, _config.action.value(), _node);
 }
 
+// Initialize the threshold counter at the start of a gesture sequence.
 void ReleaseGesture::press(bool init_threshold) {
     std::shared_lock lock(_config_mutex);
     if (init_threshold) {
@@ -46,6 +49,7 @@ void ReleaseGesture::press(bool init_threshold) {
     }
 }
 
+// Fire the configured action only when the gesture met its threshold.
 void ReleaseGesture::release(bool primary) {
     if (metThreshold() && primary) {
         if (_action) {
@@ -55,25 +59,30 @@ void ReleaseGesture::release(bool primary) {
     }
 }
 
+// Accumulate the movement used to decide when to trigger the action.
 void ReleaseGesture::move(int16_t axis) {
     _axis += axis;
 }
 
+// Release gestures are not meant for wheel-style inputs.
 bool ReleaseGesture::wheelCompatibility() const {
     return false;
 }
 
+// Report whether enough movement has accumulated.
 bool ReleaseGesture::metThreshold() const {
     std::shared_lock lock(_config_mutex);
     return _axis >= _config.threshold.value_or(defaults::gesture_threshold);
 }
 
 
+// Return the configured threshold value.
 int ReleaseGesture::getThreshold() const {
     std::shared_lock lock(_config_mutex);
     return _config.threshold.value_or(0);
 }
 
+// Update the threshold used to decide whether the action fires.
 void ReleaseGesture::setThreshold(int threshold) {
     std::unique_lock lock(_config_mutex);
     if (threshold == 0)
@@ -82,6 +91,7 @@ void ReleaseGesture::setThreshold(int threshold) {
         _config.threshold = threshold;
 }
 
+// Replace the action executed when the gesture completes.
 void ReleaseGesture::setAction(const std::string& type) {
     std::unique_lock lock(_config_mutex);
     _action.reset();

@@ -24,8 +24,11 @@ using namespace logid::actions;
 using namespace logid;
 using namespace logid::backend;
 
+// IPC name used when this action is exported through D-Bus.
 const char* GestureAction::interface_name = "Gesture";
 
+// Convert a direction string from config/IPC into the internal enum.
+// This keeps the external config human-readable while the code uses a small enum.
 GestureAction::Direction GestureAction::toDirection(std::string direction) {
     std::transform(direction.begin(), direction.end(), direction.begin(),
                    ::tolower);
@@ -43,6 +46,8 @@ GestureAction::Direction GestureAction::toDirection(std::string direction) {
         throw std::invalid_argument("direction");
 }
 
+// Convert the internal direction enum back into a string for IPC.
+// IPC clients see text names instead of enum numbers.
 std::string GestureAction::fromDirection(Direction direction) {
     switch (direction) {
         case Up:
@@ -61,6 +66,8 @@ std::string GestureAction::fromDirection(Direction direction) {
     throw InvalidGesture();
 }
 
+// Turn raw movement into the most likely cardinal direction.
+// The gesture with the largest axis wins unless the movement is essentially diagonal.
 GestureAction::Direction GestureAction::toDirection(int32_t x, int32_t y) {
     if (x >= 0 && y >= 0)
         return x >= y ? Right : Down;
@@ -72,6 +79,8 @@ GestureAction::Direction GestureAction::toDirection(int32_t x, int32_t y) {
         return x <= -y ? Up : Right;
 }
 
+// Build the gesture tree and restore any gestures already present in config.
+// The constructor wires the config into IPC nodes so each direction can be edited.
 GestureAction::GestureAction(Device* dev, config::GestureAction& config,
                              const std::shared_ptr<ipcgull::node>& parent) :
         Action(dev, interface_name,
@@ -105,6 +114,8 @@ GestureAction::GestureAction(Device* dev, config::GestureAction& config,
     }
 }
 
+// Start a new gesture sequence and notify all directional handlers.
+// Every direction gets a chance to accumulate motion from the start.
 void GestureAction::press() {
     std::shared_lock lock(_config_mutex);
 
@@ -114,6 +125,8 @@ void GestureAction::press() {
         gesture.second->press(false);
 }
 
+// Decide which gesture should fire once the input is released.
+// This is where the dominant direction is chosen and the losers are cleaned up.
 void GestureAction::release() {
     std::shared_lock lock(_config_mutex);
 
@@ -148,6 +161,8 @@ void GestureAction::release() {
     }
 }
 
+// Feed movement into the directional gesture detectors.
+// The action keeps a running total so it can decide the direction later.
 void GestureAction::move(int16_t x, int16_t y) {
     std::shared_lock lock(_config_mutex);
 
@@ -217,11 +232,15 @@ void GestureAction::move(int16_t x, int16_t y) {
     _y = new_y;
 }
 
+// Keep the hardware control temporarily diverted while gesture handling is active.
+// This allows the daemon to read raw XY movement and decide gestures itself.
 uint8_t GestureAction::reprogFlags() const {
     return (hidpp20::ReprogControls::TemporaryDiverted |
             hidpp20::ReprogControls::RawXYDiverted);
 }
 
+// Replace or create the gesture implementation for one direction.
+// If the device is mid-gesture, the old gesture is released before replacement.
 void GestureAction::setGesture(const std::string& direction, const std::string& type) {
     std::unique_lock lock(_config_mutex);
 

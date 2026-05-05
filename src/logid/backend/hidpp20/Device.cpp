@@ -24,26 +24,32 @@
 using namespace logid::backend;
 using namespace logid::backend::hidpp20;
 
+// Construct a HID++ 2.0 device from a raw path.
 Device::Device(const std::string& path, hidpp::DeviceIndex index,
                const std::shared_ptr<raw::DeviceMonitor>& monitor, double timeout) :
         hidpp::Device(path, index, monitor, timeout) {
 }
 
+// Construct a HID++ 2.0 device from an already-open raw device.
 Device::Device(std::shared_ptr<raw::RawDevice> raw_device,
                hidpp::DeviceIndex index, double timeout) :
         hidpp::Device(std::move(raw_device), index, timeout) {
 }
 
+// Construct a HID++ 2.0 device from a receiver connection event.
 Device::Device(const std::shared_ptr<hidpp10::Receiver>& receiver,
                hidpp::DeviceConnectionEvent event, double timeout) :
         hidpp::Device(receiver, event, timeout) {
 }
 
+// Construct a HID++ 2.0 device from a paired receiver slot.
 Device::Device(const std::shared_ptr<hidpp10::Receiver>& receiver,
                hidpp::DeviceIndex index, double timeout)
         : hidpp::Device(receiver, index, timeout) {
 }
 
+// Call a feature function and collect the response payload.
+// HID++ 2.0 features identify themselves by feature index plus function number.
 std::vector<uint8_t> Device::callFunction(uint8_t feature_index,
                                           uint8_t function, std::vector<uint8_t>& params) {
     hidpp::Report::Type type;
@@ -64,6 +70,8 @@ std::vector<uint8_t> Device::callFunction(uint8_t feature_index,
     return {response.paramBegin(), response.paramEnd()};
 }
 
+// Call a feature function without waiting for a response.
+// Used for commands that intentionally drop the link or do not reply.
 void Device::callFunctionNoResponse(uint8_t feature_index, uint8_t function,
                                     std::vector<uint8_t>& params) {
     hidpp::Report::Type type;
@@ -82,6 +90,9 @@ void Device::callFunctionNoResponse(uint8_t feature_index, uint8_t function,
     this->sendReportNoACK(request);
 }
 
+// Send a feature report and wait for the matching response or error.
+// The response slot chosen here is based on the feature number, which keeps
+// several feature calls from stepping on each other.
 hidpp::Report Device::sendReport(const hidpp::Report& report) {
     auto& response_slot = _responses[report.feature() % _responses.size()];
 
@@ -117,12 +128,17 @@ hidpp::Report Device::sendReport(const hidpp::Report& report) {
     }
 }
 
+// Send a feature report without waiting for ACK.
+// This is important for actions like host switching, where the device may stop
+// replying as part of the command itself.
 void Device::sendReportNoACK(const hidpp::Report& report) {
     hidpp::Report no_ack_report(report);
     no_ack_report.setSwId(hidpp::noAckSoftwareID);
     _sendReport(std::move(no_ack_report));
 }
 
+// Match incoming reports against the pending feature call slot.
+// Only the slot for the matching feature is allowed to consume the response.
 bool Device::responseReport(const hidpp::Report& report) {
     auto& response_slot = _responses[report.feature() % _responses.size()];
     std::lock_guard<std::mutex> lock(_response_mutex);
@@ -156,6 +172,8 @@ bool Device::responseReport(const hidpp::Report& report) {
     return true;
 }
 
+// Clear a pending response slot.
+// Once a request has been answered, the slot becomes available again.
 void Device::ResponseSlot::reset() {
     response.reset();
     feature.reset();

@@ -44,6 +44,8 @@ static constexpr int max_write_tries = 8;
 
 static const std::regex virtual_path_regex(R"~((.*\/)(.*:)([0-9]+))~");
 
+// Open the hidraw node with non-blocking read/write access.
+// Non-blocking mode keeps the event loop from hanging if the device disappears.
 int get_fd(const std::string& path) {
     int fd = ::open(path.c_str(), O_RDWR | O_NONBLOCK);
     if (fd == -1)
@@ -53,6 +55,8 @@ int get_fd(const std::string& path) {
     return fd;
 }
 
+// Read the kernel-reported vendor/product and bus metadata.
+// This is the cheap probe that tells us what kind of device we are looking at.
 RawDevice::dev_info get_dev_info(int fd) {
     hidraw_devinfo dev_info{};
     if (-1 == ::ioctl(fd, HIDIOCGRAWINFO, &dev_info)) {
@@ -82,6 +86,8 @@ RawDevice::dev_info get_dev_info(int fd) {
     };
 }
 
+// Read the physical path string used to detect sub-devices.
+// Logitech receivers expose synthetic hidraw nodes that should usually be ignored.
 std::string get_phys(int fd) {
     ssize_t len;
     char buf[256];
@@ -95,6 +101,8 @@ std::string get_phys(int fd) {
     return {buf, static_cast<size_t>(len) - 1};
 }
 
+// Read the device name string from the hidraw node.
+// This is the fallback name used when HID++ name lookup is unavailable.
 std::string get_name(int fd) {
     ssize_t len;
     char name_buf[256];
@@ -107,6 +115,9 @@ std::string get_name(int fd) {
     return {name_buf, static_cast<size_t>(len) - 1};
 }
 
+// Open the raw device and cache the identifying information needed by higher layers.
+// The constructor intentionally does the minimum needed to identify the device;
+// the rest of the setup happens after it is handed off to the I/O monitor.
 RawDevice::RawDevice(std::string path, const std::shared_ptr<DeviceMonitor>& monitor) :
         _valid(true), _path(std::move(path)), _fd(get_fd(_path)),
         _dev_info(get_dev_info(_fd)), _name(get_name(_fd)),
@@ -119,6 +130,8 @@ RawDevice::RawDevice(std::string path, const std::shared_ptr<DeviceMonitor>& mon
     }
 }
 
+// Register read/error callbacks with the shared I/O monitor.
+// The monitor tells us when the fd is readable, hung up, or has an error.
 void RawDevice::_ready() {
     _io_monitor->add(_fd, {
             [self_weak = _self]() {
@@ -136,36 +149,44 @@ void RawDevice::_ready() {
     });
 }
 
+// Release the I/O monitor registration and close the file descriptor.
 RawDevice::~RawDevice() noexcept {
     _io_monitor->remove(_fd);
     ::close(_fd);
 }
 
+// Return the path used to open this raw device.
 const std::string& RawDevice::rawPath() const {
     return _path;
 }
 
+// Return the human-readable kernel name.
 const std::string& RawDevice::name() const {
     return _name;
 }
 
 [[maybe_unused]]
+// Return the vendor id exposed by the kernel.
 int16_t RawDevice::vendorId() const {
     return _dev_info.vid;
 }
 
+// Return the product id exposed by the kernel.
 int16_t RawDevice::productId() const {
     return _dev_info.pid;
 }
 
+// Return the detected bus type.
 RawDevice::BusType RawDevice::busType() const {
     return _dev_info.bus_type;
 }
 
+// Detect whether this device is a USB sub-device exposed via a virtual path.
 bool RawDevice::isSubDevice() const {
     return _sub_device;
 }
 
+// Read the full HID report descriptor from a path.
 std::vector<uint8_t> RawDevice::getReportDescriptor(const std::string& path) {
     int fd = ::open(path.c_str(), O_RDWR | O_NONBLOCK);
     if (fd == -1)
@@ -177,6 +198,7 @@ std::vector<uint8_t> RawDevice::getReportDescriptor(const std::string& path) {
     return report_desc;
 }
 
+// Read the full HID report descriptor from an already-open descriptor.
 std::vector<uint8_t> RawDevice::getReportDescriptor(int fd) {
     hidraw_report_descriptor report_desc{};
     if (-1 == ::ioctl(fd, HIDIOCGRDESCSIZE, &report_desc.size)) {
@@ -194,10 +216,13 @@ std::vector<uint8_t> RawDevice::getReportDescriptor(int fd) {
     return {report_desc.value, report_desc.value + report_desc.size};
 }
 
+// Return the cached report descriptor used by the higher-level HID++ parsers.
 const std::vector<uint8_t>& RawDevice::reportDescriptor() const {
     return _report_desc;
 }
 
+// Send one HID report, retrying transient pipe errors where appropriate.
+// The retry loop helps with devices that temporarily drop writes while waking up.
 void RawDevice::sendReport(const std::vector<uint8_t>& report) {
     if (!_valid) {
         // We could throw an error here, but this will likely be closed soon.
@@ -220,10 +245,13 @@ void RawDevice::sendReport(const std::vector<uint8_t>& report) {
     }
 }
 
+// Register an event handler and keep it alive via an RAII token.
 EventHandlerLock<RawDevice> RawDevice::addEventHandler(RawEventHandler handler) {
     return {_event_handlers, _event_handlers->add(std::forward<RawEventHandler>(handler))};
 }
 
+// Read all available reports and forward them to registered handlers.
+// Each raw report is copied into a vector so higher layers can parse it safely.
 void RawDevice::_readReports() {
     uint8_t buf[max_data_length];
     ssize_t len;
@@ -243,6 +271,7 @@ void RawDevice::_readReports() {
     }
 }
 
+// Dispatch one report to the active callback list.
 void RawDevice::_handleEvent(const std::vector<uint8_t>& report) {
     _event_handlers->run_all(report);
 }

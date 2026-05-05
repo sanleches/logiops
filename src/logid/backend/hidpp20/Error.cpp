@@ -22,10 +22,12 @@
 using namespace logid::backend;
 using namespace logid::backend::hidpp20;
 
+// Record a HID++ 2.0 feature error for later inspection.
 Error::Error(uint8_t code, hidpp::DeviceIndex index) : _code(code), _index (index) {
     assert(_code != NoError);
 }
 
+// Return a descriptive message for the stored error code.
 const char* Error::what() const noexcept {
     switch (_code) {
         case NoError:
@@ -55,10 +57,12 @@ const char* Error::what() const noexcept {
     }
 }
 
+// Return the raw HID++ 2.0 error code.
 uint8_t Error::code() const noexcept {
     return _code;
 }
 
+// Return the device index that generated the error.
 hidpp::DeviceIndex Error::deviceIndex() const noexcept {
     return _index;
 }

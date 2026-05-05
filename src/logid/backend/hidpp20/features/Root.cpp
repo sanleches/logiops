@@ -23,6 +23,7 @@
 using namespace logid::backend::hidpp20;
 
 namespace {
+    // Encode a feature ID in the two-byte payload format.
     std::vector<uint8_t> _genGetFeatureParams(uint16_t feature_id) {
         std::vector<uint8_t> params(2);
         params[0] = feature_id & 0xff;
@@ -30,6 +31,7 @@ namespace {
         return params;
     }
 
+    // Decode the root feature response into feature metadata.
     feature_info _genGetFeatureInfo(uint16_t feature_id,
                                     std::vector<uint8_t> response) {
         feature_info info{};
@@ -46,9 +48,11 @@ namespace {
     }
 }
 
+// Bind the root feature to the device.
 Root::Root(hidpp::Device* dev) : EssentialFeature(dev, ID) {
 }
 
+// Ask the device whether a feature exists and what flags it has.
 feature_info Root::getFeature(uint16_t feature_id) {
     auto params = _genGetFeatureParams(feature_id);
     try {
@@ -61,6 +65,7 @@ feature_info Root::getFeature(uint16_t feature_id) {
     }
 }
 
+// Ping the device and return the echoed byte.
 uint8_t Root::ping(uint8_t byte) {
     std::vector<uint8_t> params(3);
     params[2] = byte;
@@ -70,6 +75,7 @@ uint8_t Root::ping(uint8_t byte) {
     return response[2];
 }
 
+// Read the root feature version, normalizing older firmware quirks.
 std::tuple<uint8_t, uint8_t> Root::getVersion() {
     std::vector<uint8_t> params(0);
     auto response = this->callFunction(Root::Function::Ping, params);
