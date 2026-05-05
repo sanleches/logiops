@@ -16,6 +16,12 @@
  *
  */
 
+/*
+ * File: config.cpp
+ *
+ * Config parsing helpers and shared schema constants.
+ */
+
 #include <config/schema.h>
 #include <util/log.h>
 
@@ -25,6 +31,10 @@ const char config::keys::name[] = "name";
 const char config::keys::cid[] = "cid";
 const char config::keys::direction[] = "direction";
 
+// Purpose: Log a config parsing error with the source line.
+// Inputs: Config setting and exception.
+// Outputs: Warning log line.
+// Used by: config parsing.
 void config::logError(const libconfig::Setting& setting, std::exception& e) {
     logPrintf(WARN, "Error at line %d: %s", setting.getSourceLine(), e.what());
 }

@@ -15,16 +15,31 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
+/*
+ * File: HiresScroll.cpp
+ *
+ * HID++ 2.0 hi-res scroll protocol wrapper. This module exposes wheel mode,
+ * capability, and event decoding helpers used by the higher-level scroll
+ * feature wrapper.
+ */
+
 #include <backend/hidpp20/features/HiresScroll.h>
 #include <cassert>
 
 using namespace logid::backend::hidpp20;
 
-// Bind the hires-scroll feature to the device.
+// Purpose: Bind the hi-res scroll feature to the device.
+// Inputs: HID++ device.
+// Outputs: Hi-res scroll wrapper.
+// Used by: higher-level scroll feature wrapper.
 HiresScroll::HiresScroll(Device* device) : Feature(device, ID) {
 }
 
-// Read the capability block.
+// Purpose: Read the capability block.
+// Inputs: None.
+// Outputs: Capabilities structure.
+// Used by: scroll configuration.
 HiresScroll::Capabilities HiresScroll::getCapabilities() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetCapabilities, params);
@@ -35,14 +50,20 @@ HiresScroll::Capabilities HiresScroll::getCapabilities() {
     return capabilities;
 }
 
-// Read the current mode bits.
+// Purpose: Read the current mode bits.
+// Inputs: None.
+// Outputs: Hardware mode value.
+// Used by: scroll configuration.
 uint8_t HiresScroll::getMode() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetMode, params);
     return response[0];
 }
 
-// Write new mode bits.
+// Purpose: Write new mode bits.
+// Inputs: Mode value.
+// Outputs: Hardware mode updated.
+// Used by: scroll configuration.
 void HiresScroll::setMode(uint8_t mode) {
     std::vector<uint8_t> params(1);
     params[0] = mode;
@@ -55,7 +76,10 @@ void HiresScroll::setMode(uint8_t mode) {
     return params[0];
 }
 
-// Decode a wheel movement event.
+// Purpose: Decode a wheel movement event.
+// Inputs: One HID++ report.
+// Outputs: Wheel status structure.
+// Used by: scroll event handling.
 HiresScroll::WheelStatus HiresScroll::wheelMovementEvent(const hidpp::Report& report) {
     assert(report.function() == WheelMovement);
     WheelStatus status{};
@@ -66,7 +90,10 @@ HiresScroll::WheelStatus HiresScroll::wheelMovementEvent(const hidpp::Report& re
 }
 
 [[maybe_unused]]
-// Decode a ratchet switch event.
+// Purpose: Decode a ratchet switch event.
+// Inputs: One HID++ report.
+// Outputs: Ratchet state enum.
+// Used by: scroll event handling.
 HiresScroll::RatchetState HiresScroll::ratchetSwitchEvent(const hidpp::Report& report) {
     assert(report.function() == RatchetSwitch);
     // Possible bad cast

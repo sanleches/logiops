@@ -15,16 +15,29 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: ChangeHost.cpp
+ *
+ * HID++ 2.0 host-switch wrapper. This module exposes paired-host metadata and
+ * the no-ACK host switching flow needed for the ChangeHost action.
+ */
+
 #include <backend/hidpp20/features/ChangeHost.h>
 #include <backend/hidpp20/Device.h>
 
 using namespace logid::backend::hidpp20;
 
-// Bind the host-switch helper to the device.
+// Purpose: Bind the host-switch helper to the device.
+// Inputs: HID++ device.
+// Outputs: Host-switch wrapper.
+// Used by: ChangeHost action and IPC.
 ChangeHost::ChangeHost(Device* dev) : Feature(dev, ID), _host_count(0) {
 }
 
-// Read the number of paired hosts and the active host.
+// Purpose: Read the number of paired hosts and the active host.
+// Inputs: None.
+// Outputs: Host info structure.
+// Used by: host switching and IPC.
 ChangeHost::HostInfo ChangeHost::getHostInfo() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetHostInfo, params);
@@ -40,7 +53,10 @@ ChangeHost::HostInfo ChangeHost::getHostInfo() {
     return info;
 }
 
-// Switch to another paired host.
+// Purpose: Switch to another paired host.
+// Inputs: Host index.
+// Outputs: Host switch request without waiting for a reply.
+// Used by: host-switch action.
 void ChangeHost::setHost(uint8_t host) {
     /* Expect connection to be severed here, send without response
      *
@@ -59,7 +75,10 @@ void ChangeHost::setHost(uint8_t host) {
 }
 
 [[maybe_unused]]
-// Read the per-host cookies if the device exposes them.
+// Purpose: Read the per-host cookies if the device exposes them.
+// Inputs: None.
+// Outputs: Cookie list.
+// Used by: diagnostics.
 std::vector<uint8_t> ChangeHost::getCookies() {
     if (!_host_count)
         getHostInfo();
@@ -73,7 +92,10 @@ std::vector<uint8_t> ChangeHost::getCookies() {
 }
 
 [[maybe_unused]]
-// Store a cookie value for one host.
+// Purpose: Store a cookie value for one host.
+// Inputs: Host index and cookie value.
+// Outputs: Cookie write request.
+// Used by: diagnostics and setup.
 void ChangeHost::setCookie(uint8_t host, uint8_t cookie) {
     std::vector<uint8_t> params = {host, cookie};
     callFunction(SetCookie, params);

@@ -16,6 +16,14 @@
  *
  */
 
+/*
+ * File: Root.cpp
+ *
+ * HID++ 2.0 ROOT feature wrapper. This module is the discovery entry point for
+ * feature lookup and version probing, and it provides the helpers that other
+ * HID++ 2.0 wrappers use to resolve runtime feature IDs.
+ */
+
 #include <backend/hidpp20/features/Root.h>
 #include <backend/hidpp20/Feature.h>
 #include <backend/hidpp20/Error.h>
@@ -23,7 +31,10 @@
 using namespace logid::backend::hidpp20;
 
 namespace {
-    // Encode a feature ID in the two-byte payload format.
+    // Purpose: Encode a feature ID in the root feature payload format.
+    // Inputs: Compile-time feature ID.
+    // Outputs: Two-byte parameter vector.
+    // Used by: `Root::getFeature()`.
     std::vector<uint8_t> _genGetFeatureParams(uint16_t feature_id) {
         std::vector<uint8_t> params(2);
         params[0] = feature_id & 0xff;
@@ -31,7 +42,10 @@ namespace {
         return params;
     }
 
-    // Decode the root feature response into feature metadata.
+    // Purpose: Decode the ROOT response into feature metadata.
+    // Inputs: Requested feature ID and raw response bytes.
+    // Outputs: Parsed feature info or `UnsupportedFeature`.
+    // Used by: `Root::getFeature()`.
     feature_info _genGetFeatureInfo(uint16_t feature_id,
                                     std::vector<uint8_t> response) {
         feature_info info{};
@@ -48,11 +62,17 @@ namespace {
     }
 }
 
-// Bind the root feature to the device.
+// Purpose: Bind the ROOT feature to the device.
+// Inputs: HID++ device.
+// Outputs: Root feature wrapper.
+// Used by: all HID++ 2.0 feature discovery.
 Root::Root(hidpp::Device* dev) : EssentialFeature(dev, ID) {
 }
 
-// Ask the device whether a feature exists and what flags it has.
+// Purpose: Ask the device whether a feature exists and what flags it has.
+// Inputs: Compile-time feature ID.
+// Outputs: Feature metadata or `UnsupportedFeature`.
+// Used by: HID++ 2.0 feature construction.
 feature_info Root::getFeature(uint16_t feature_id) {
     auto params = _genGetFeatureParams(feature_id);
     try {
@@ -65,7 +85,10 @@ feature_info Root::getFeature(uint16_t feature_id) {
     }
 }
 
-// Ping the device and return the echoed byte.
+// Purpose: Ping the device and return the echoed byte.
+// Inputs: One byte.
+// Outputs: Echoed byte from hardware.
+// Used by: device liveness checks.
 uint8_t Root::ping(uint8_t byte) {
     std::vector<uint8_t> params(3);
     params[2] = byte;
@@ -75,7 +98,10 @@ uint8_t Root::ping(uint8_t byte) {
     return response[2];
 }
 
-// Read the root feature version, normalizing older firmware quirks.
+// Purpose: Read the ROOT version, normalizing firmware quirks.
+// Inputs: None.
+// Outputs: Major/minor version tuple.
+// Used by: HID++ device initialization.
 std::tuple<uint8_t, uint8_t> Root::getVersion() {
     std::vector<uint8_t> params(0);
     auto response = this->callFunction(Root::Function::Ping, params);

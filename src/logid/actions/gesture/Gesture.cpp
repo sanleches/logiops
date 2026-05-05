@@ -16,6 +16,14 @@
  *
  */
 
+/*
+ * File: Gesture.cpp
+ *
+ * Shared gesture factory and IPC base. This module instantiates concrete
+ * gesture subclasses from config variants and provides the shared interface
+ * node wiring.
+ */
+
 #include <actions/gesture/Gesture.h>
 #include <utility>
 #include <actions/gesture/ReleaseGesture.h>
@@ -28,7 +36,10 @@
 using namespace logid;
 using namespace logid::actions;
 
-// Create the shared IPC base for a gesture implementation.
+// Purpose: Create the shared IPC base for a gesture implementation.
+// Inputs: Device, parent node, name, and method/property tables.
+// Outputs: Gesture interface base.
+// Used by: gesture subclasses.
 Gesture::Gesture(Device* device,
                  std::shared_ptr<ipcgull::node> node,
                  const std::string& name, tables t) :
@@ -61,7 +72,10 @@ namespace {
     }
 }
 
-// Build the matching gesture object from the config variant.
+// Purpose: Build the matching gesture object from the config variant.
+// Inputs: Device, config variant, and IPC parent.
+// Outputs: Concrete gesture.
+// Used by: config deserialization.
 std::shared_ptr<Gesture> Gesture::makeGesture(
         Device* device, config::Gesture& gesture,
         const std::shared_ptr<ipcgull::node>& parent) {
@@ -70,7 +84,10 @@ std::shared_ptr<Gesture> Gesture::makeGesture(
     }, gesture);
 }
 
-// Build a gesture from an explicit type name, falling back to a config default if needed.
+// Purpose: Build a gesture from an explicit type name, falling back to a config default if needed.
+// Inputs: Device, type name, config storage, and IPC parent.
+// Outputs: Concrete gesture or exception.
+// Used by: config deserialization.
 std::shared_ptr<Gesture> Gesture::makeGesture(
         Device* device, const std::string& type,
         config::Gesture& config,

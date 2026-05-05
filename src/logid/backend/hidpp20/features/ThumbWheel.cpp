@@ -16,16 +16,30 @@
  *
  */
 
+/*
+ * File: ThumbWheel.cpp
+ *
+ * HID++ 2.0 thumb-wheel protocol wrapper. This module exposes the wheel
+ * capability block, current status, and event decoding helpers used by the
+ * thumb-wheel feature wrapper.
+ */
+
 #include <backend/hidpp20/features/ThumbWheel.h>
 #include <cassert>
 
 using namespace logid::backend::hidpp20;
 
-// Bind the thumb-wheel feature to the device.
+// Purpose: Bind the thumb-wheel feature to the device.
+// Inputs: HID++ device.
+// Outputs: Thumb-wheel wrapper.
+// Used by: higher-level thumb-wheel feature wrapper.
 ThumbWheel::ThumbWheel(Device* dev) : Feature(dev, ID) {
 }
 
-// Read the wheel's resolution and feature flags.
+// Purpose: Read the wheel's resolution and feature flags.
+// Inputs: None.
+// Outputs: Capability information.
+// Used by: thumb-wheel configuration.
 ThumbWheel::ThumbwheelInfo ThumbWheel::getInfo() {
     std::vector<uint8_t> params(0), response;
     ThumbwheelInfo info{};
@@ -43,7 +57,10 @@ ThumbWheel::ThumbwheelInfo ThumbWheel::getInfo() {
     return info;
 }
 
-// Read the current divert/touch/proxy state.
+// Purpose: Read the current divert/touch/proxy state.
+// Inputs: None.
+// Outputs: Status structure.
+// Used by: thumb-wheel configuration.
 ThumbWheel::ThumbwheelStatus ThumbWheel::getStatus() {
     std::vector<uint8_t> params(0), response;
     ThumbwheelStatus status{};
@@ -57,7 +74,10 @@ ThumbWheel::ThumbwheelStatus ThumbWheel::getStatus() {
     return status;
 }
 
-// Enable divert mode and optionally invert the wheel.
+// Purpose: Enable divert mode and optionally invert the wheel.
+// Inputs: Divert and invert flags.
+// Outputs: Status structure from hardware.
+// Used by: thumb-wheel configuration.
 ThumbWheel::ThumbwheelStatus ThumbWheel::setStatus(bool divert, bool invert) {
     std::vector<uint8_t> params(2), response;
     ThumbwheelStatus status{};
@@ -71,7 +91,10 @@ ThumbWheel::ThumbwheelStatus ThumbWheel::setStatus(bool divert, bool invert) {
     return status;
 }
 
-// Decode one thumb-wheel report into a typed event.
+// Purpose: Decode one thumb-wheel report into a typed event.
+// Inputs: One HID++ report.
+// Outputs: Parsed thumb-wheel event.
+// Used by: wheel event handling.
 ThumbWheel::ThumbwheelEvent ThumbWheel::thumbwheelEvent(const hidpp::Report& report) {
     assert(report.function() == Event);
     ThumbwheelEvent event{};

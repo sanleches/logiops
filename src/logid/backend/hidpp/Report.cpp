@@ -16,6 +16,14 @@
  *
  */
 
+/*
+ * File: Report.cpp
+ *
+ * HID++ report packing/parsing helpers. This module builds short and long
+ * transport reports, recognizes supported report descriptors, and translates
+ * raw report buffers into typed device responses.
+ */
+
 #include <backend/hidpp/Report.h>
 #include <array>
 #include <algorithm>

@@ -15,22 +15,39 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: AdjustableDPI.cpp
+ *
+ * HID++ 2.0 adjustable-DPI wrapper. This module exposes the sensor count,
+ * supported DPI lists, current values, and DPI writes for devices that support
+ * per-sensor DPI control.
+ */
+
 #include <backend/hidpp20/features/AdjustableDPI.h>
 
 using namespace logid::backend::hidpp20;
 
-// Bind the DPI feature to the device.
+// Purpose: Bind the adjustable-DPI feature to the device.
+// Inputs: HID++ device.
+// Outputs: Adjustable-DPI wrapper.
+// Used by: DPI feature wrapper.
 AdjustableDPI::AdjustableDPI(Device* dev) : Feature(dev, ID) {
 }
 
-// Return the number of sensors that report DPI values.
+// Purpose: Return the number of sensors that report DPI values.
+// Inputs: None.
+// Outputs: Sensor count.
+// Used by: DPI feature setup.
 uint8_t AdjustableDPI::getSensorCount() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetSensorCount, params);
     return response[0];
 }
 
-// Parse the device's supported DPI list for one sensor.
+// Purpose: Parse the device's supported DPI list for one sensor.
+// Inputs: Sensor index.
+// Outputs: Supported DPI list/range description.
+// Used by: DPI normalization.
 AdjustableDPI::SensorDPIList AdjustableDPI::getSensorDPIList(uint8_t sensor) {
     SensorDPIList dpi_list{};
     std::vector<uint8_t> params(1);
@@ -54,7 +71,10 @@ AdjustableDPI::SensorDPIList AdjustableDPI::getSensorDPIList(uint8_t sensor) {
     return dpi_list;
 }
 
-// Read the sensor's factory-default DPI.
+// Purpose: Read the sensor's factory-default DPI.
+// Inputs: Sensor index.
+// Outputs: Default DPI value.
+// Used by: DPI feature logic.
 uint16_t AdjustableDPI::getDefaultSensorDPI(uint8_t sensor) {
     std::vector<uint8_t> params(1);
     params[0] = sensor;
@@ -66,7 +86,10 @@ uint16_t AdjustableDPI::getDefaultSensorDPI(uint8_t sensor) {
     return default_dpi;
 }
 
-// Read the sensor's current DPI.
+// Purpose: Read the sensor's current DPI.
+// Inputs: Sensor index.
+// Outputs: Live DPI value.
+// Used by: DPI feature logic and IPC.
 uint16_t AdjustableDPI::getSensorDPI(uint8_t sensor) {
     std::vector<uint8_t> params(1);
     params[0] = sensor;
@@ -78,7 +101,10 @@ uint16_t AdjustableDPI::getSensorDPI(uint8_t sensor) {
     return dpi;
 }
 
-// Write a new DPI value for one sensor.
+// Purpose: Write a new DPI value for one sensor.
+// Inputs: Sensor index and DPI value.
+// Outputs: Hardware DPI updated.
+// Used by: DPI setters.
 void AdjustableDPI::setSensorDPI(uint8_t sensor, uint16_t dpi) {
     std::vector<uint8_t> params(3);
     params[0] = sensor;

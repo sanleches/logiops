@@ -15,16 +15,31 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
+/*
+ * File: WirelessDeviceStatus.cpp
+ *
+ * HID++ 2.0 wireless-device-status wrapper. This module decodes the broadcast
+ * status reports that indicate reconnection, reconfiguration, and power switch
+ * transitions.
+ */
+
 #include <backend/hidpp20/features/WirelessDeviceStatus.h>
 #include <cassert>
 
 using namespace logid::backend::hidpp20;
 
-// Bind the wireless status feature to the device.
+// Purpose: Bind the wireless status feature to the device.
+// Inputs: HID++ device.
+// Outputs: Wireless status wrapper.
+// Used by: receiver-backed device status handling.
 WirelessDeviceStatus::WirelessDeviceStatus(Device* dev) : Feature(dev, ID) {
 }
 
-// Decode the broadcast status report.
+// Purpose: Decode the broadcast status report.
+// Inputs: One HID++ report.
+// Outputs: Wireless status structure.
+// Used by: receiver/device wake state handling.
 WirelessDeviceStatus::Status WirelessDeviceStatus::statusBroadcastEvent(
         const hidpp::Report& report) {
     assert(report.function() == StatusBroadcast);

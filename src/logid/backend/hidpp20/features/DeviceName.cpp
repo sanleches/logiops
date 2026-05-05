@@ -16,13 +16,23 @@
  *
  */
 
+/*
+ * File: DeviceName.cpp
+ *
+ * HID++ 2.0 device-name wrapper. This module reads the reported name length and
+ * stitches together chunked name payloads into one string for higher layers.
+ */
+
 #include <backend/hidpp20/features/DeviceName.h>
 
 using namespace logid::backend;
 using namespace logid::backend::hidpp20;
 
 namespace {
-    // Fetch the device name in long-packet chunks.
+    // Purpose: Fetch the device name in long-packet chunks.
+    // Inputs: Reported length and a feature call function.
+    // Outputs: Assembled device name string.
+    // Used by: `DeviceName::getName()`.
     std::string _getName(uint8_t length,
                          const std::function<std::vector<uint8_t>(std::vector<uint8_t>)>& fcall) {
         uint8_t function_calls = length / hidpp::LongParamLength;
@@ -45,12 +55,18 @@ namespace {
     }
 }
 
-// Bind the name reader to the device.
+// Purpose: Bind the name reader to the device.
+// Inputs: HID++ device.
+// Outputs: Device-name feature wrapper.
+// Used by: device initialization.
 DeviceName::DeviceName(hidpp::Device* dev) :
         EssentialFeature(dev, ID) {
 }
 
-// Read the reported name length.
+// Purpose: Read the reported name length.
+// Inputs: None.
+// Outputs: Name length byte.
+// Used by: `getName()`.
 uint8_t DeviceName::getNameLength() {
     std::vector<uint8_t> params(0);
 
@@ -59,7 +75,10 @@ uint8_t DeviceName::getNameLength() {
     return response[0];
 }
 
-// Fetch the device name in chunks.
+// Purpose: Fetch the device name in chunks.
+// Inputs: None.
+// Outputs: Full device name string.
+// Used by: `Device` initialization.
 std::string DeviceName::getName() {
     return _getName(getNameLength(), [this]
             (std::vector<uint8_t> params) -> std::vector<uint8_t> {

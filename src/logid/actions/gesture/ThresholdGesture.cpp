@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
+/*
+ * File: ThresholdGesture.cpp
+ *
+ * Gesture implementation that fires once movement crosses a configured
+ * threshold and then executes one action.
+ */
+
 #include <actions/gesture/ThresholdGesture.h>
 #include <Configuration.h>
 #include <util/log.h>
@@ -24,7 +32,10 @@ using namespace logid::actions;
 // IPC name used when this gesture is exported through D-Bus.
 const char* ThresholdGesture::interface_name = "OnRelease";
 
-// Bind the threshold gesture to its config and optional action.
+// Purpose: Bind the threshold gesture to its config and optional action.
+// Inputs: Device, config, and IPC parent node.
+// Outputs: Threshold gesture interface.
+// Used by: gesture action setup.
 ThresholdGesture::ThresholdGesture(
         Device* device, config::ThresholdGesture& config,
         const std::shared_ptr<ipcgull::node>& parent) :
@@ -46,19 +57,28 @@ ThresholdGesture::ThresholdGesture(
     }
 }
 
-// Initialize movement tracking for a new gesture sequence.
+// Purpose: Initialize movement tracking for a new gesture sequence.
+// Inputs: Whether to seed from threshold.
+// Outputs: Reset internal state.
+// Used by: gesture begin handling.
 void ThresholdGesture::press(bool init_threshold) {
     std::shared_lock lock(_config_mutex);
     _axis = init_threshold ? (int32_t) _config.threshold.value_or(defaults::gesture_threshold) : 0;
     this->_executed = false;
 }
 
-// Clear the one-shot execution state after the gesture ends.
+// Purpose: Clear the one-shot execution state after the gesture ends.
+// Inputs: Whether this is the primary release.
+// Outputs: Reset execution guard.
+// Used by: gesture end handling.
 void ThresholdGesture::release([[maybe_unused]] bool primary) {
     this->_executed = false;
 }
 
-// Accumulate movement and fire the action once the threshold is crossed.
+// Purpose: Accumulate movement and fire the action once the threshold is crossed.
+// Inputs: Movement delta.
+// Outputs: Optional action trigger.
+// Used by: gesture motion handling.
 void ThresholdGesture::move(int16_t axis) {
     _axis += axis;
 
@@ -71,24 +91,36 @@ void ThresholdGesture::move(int16_t axis) {
     }
 }
 
-// Report whether enough movement has accumulated.
+// Purpose: Report whether enough movement has accumulated.
+// Inputs: None.
+// Outputs: Threshold met flag.
+// Used by: gesture dispatch.
 bool ThresholdGesture::metThreshold() const {
     std::shared_lock lock(_config_mutex);
     return _axis >= _config.threshold.value_or(defaults::gesture_threshold);
 }
 
-// Threshold gestures are not designed for wheel-style inputs.
+// Purpose: Report that threshold gestures are not designed for wheel-style inputs.
+// Inputs: None.
+// Outputs: False.
+// Used by: gesture compatibility checks.
 bool ThresholdGesture::wheelCompatibility() const {
     return false;
 }
 
-// Return the configured threshold value.
+// Purpose: Return the configured threshold value.
+// Inputs: None.
+// Outputs: Threshold value or zero.
+// Used by: IPC getters.
 int ThresholdGesture::getThreshold() const {
     std::shared_lock lock(_config_mutex);
     return _config.threshold.value_or(0);
 }
 
-// Update the threshold used for action firing.
+// Purpose: Update the threshold used for action firing.
+// Inputs: Threshold value.
+// Outputs: Config update.
+// Used by: IPC setters.
 void ThresholdGesture::setThreshold(int threshold) {
     std::unique_lock lock(_config_mutex);
     if (threshold == 0)
@@ -97,7 +129,10 @@ void ThresholdGesture::setThreshold(int threshold) {
         _config.threshold = threshold;
 }
 
-// Replace the action executed when the threshold is first crossed.
+// Purpose: Replace the action executed when the threshold is first crossed.
+// Inputs: Action type name.
+// Outputs: New action binding.
+// Used by: IPC setters.
 void ThresholdGesture::setAction(const std::string& type) {
     std::unique_lock lock(_config_mutex);
     _action.reset();

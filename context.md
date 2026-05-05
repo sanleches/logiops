@@ -74,6 +74,7 @@
 - `backend/hidpp20` multiplexes feature calls by feature index and resolves runtime feature IDs through ROOT.
 - `features/*` are thin config-to-hardware bridges; they translate profile state into concrete backend feature calls.
 - `actions/*` are button behaviors; most follow the pattern `construct -> press -> release -> optional IPC setters/getters`.
+- Recent documentation passes covered the HID++ feature wrappers, gesture factories, backend error/report helpers, and the ipcgull server stubs.
 - `ipcgull` maps the C++ object tree onto D-Bus: nodes own interfaces, interfaces own methods/properties/signals, and the server backend performs registration and dispatch.
 - `Configuration` wraps libconfig runtime state; `save()` serializes the current in-memory model back to disk.
 - `InputDevice` owns the synthetic uinput target and rebuilds it when new keys/axes must be exported.

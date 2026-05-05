@@ -16,6 +16,13 @@
  *
  */
 
+/*
+ * File: Action.cpp
+ *
+ * Generic action factory and IPC base. This module maps config variants to the
+ * concrete action classes and attaches them to the exported D-Bus tree.
+ */
+
 #include <actions/Action.h>
 #include <actions/KeypressAction.h>
 #include <actions/ToggleSmartShift.h>
@@ -91,8 +98,10 @@ namespace logid::actions {
     }
 }
 
-// Build an action from a basic config variant.
-// This is the path used for simple button mappings that do not contain gestures.
+// Purpose: Build an action from a basic config variant.
+// Inputs: Device, config variant name, and optional config storage.
+// Outputs: Concrete action or null for the default mapping.
+// Used by: button mapping setup.
 std::shared_ptr<Action> Action::makeAction(
         Device* device, const std::string& name,
         std::optional<config::BasicAction>& config,
@@ -103,8 +112,10 @@ std::shared_ptr<Action> Action::makeAction(
     return ret;
 }
 
-// Build an action from a richer config variant, including gesture-backed actions.
-// GestureAction is treated as a special fallback because it is a composite action.
+// Purpose: Build an action from a richer config variant, including gesture-backed actions.
+// Inputs: Device, config variant name, and optional config storage.
+// Outputs: Concrete action or gesture fallback.
+// Used by: config deserialization.
 std::shared_ptr<Action> Action::makeAction(
         Device* device, const std::string& name,
         std::optional<config::Action>& config,
@@ -123,8 +134,10 @@ std::shared_ptr<Action> Action::makeAction(
     }
 }
 
-// Build an action directly from the config variant value.
-// This path is used when the config already stores the specific action type.
+// Purpose: Build an action directly from the config variant value.
+// Inputs: Device and stored action variant.
+// Outputs: Concrete action instance.
+// Used by: config deserialization.
 std::shared_ptr<Action> Action::makeAction(
         Device* device, config::BasicAction& action,
         const std::shared_ptr<ipcgull::node>& parent) {
@@ -137,8 +150,10 @@ std::shared_ptr<Action> Action::makeAction(
     return ret;
 }
 
-// Build an action directly from the config variant value.
-// Same logic as the other overload, but for the wider action variant.
+// Purpose: Build an action directly from the config variant value.
+// Inputs: Device and stored action variant.
+// Outputs: Concrete action instance.
+// Used by: config deserialization.
 std::shared_ptr<Action> Action::makeAction(
         Device* device, config::Action& action,
         const std::shared_ptr<ipcgull::node>& parent) {
@@ -151,8 +166,10 @@ std::shared_ptr<Action> Action::makeAction(
     return ret;
 }
 
-// Seed the base IPC interface for a specific action name.
-// Every action gets its own namespace under `SERVICE_ROOT_NAME.Action.*`.
+// Purpose: Seed the base IPC interface for a specific action name.
+// Inputs: Device, interface name, and property/function tables.
+// Outputs: Base action interface bound to the exported IPC tree.
+// Used by: action subclasses.
 Action::Action(Device* device, const std::string& name, tables t) :
         ipcgull::interface(SERVICE_ROOT_NAME ".Action." + name, std::move(t)),
         _device(device), _pressed(false) {
