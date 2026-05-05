@@ -16,6 +16,14 @@
  *
  */
 
+/*
+ * File: log.cpp
+ *
+ * Logging helpers for the daemon. This file centralizes log-level filtering,
+ * output prefixes, and string-to-level parsing so the rest of the codebase can
+ * log through a consistent interface.
+ */
+
 #include <util/log.h>
 #include <cstdio>
 #include <cstdarg>
@@ -24,7 +32,10 @@
 
 using namespace logid;
 
-// Print a formatted line to stdout or stderr when the current log level allows it.
+// Purpose: Print a formatted log line when the level is enabled.
+// Inputs: Log level, printf-style format, and variadic arguments.
+// Outputs: One formatted log line to stdout or stderr.
+// Used by: daemon and feature logging.
 void logid::logPrintf(LogLevel level, const char* format, ...) {
     if (global_loglevel > level) return;
 
@@ -40,7 +51,10 @@ void logid::logPrintf(LogLevel level, const char* format, ...) {
     fprintf(stream, "\n");
 }
 
-// Convert the enum value into the stable prefix used in log output.
+// Purpose: Convert a log level into its output prefix.
+// Inputs: Log level.
+// Outputs: Stable prefix string.
+// Used by: `logPrintf()`.
 const char* logid::levelPrefix(LogLevel level) {
     switch (level) {
         case RAWREPORT:
@@ -59,7 +73,10 @@ const char* logid::levelPrefix(LogLevel level) {
 }
 
 
-// Parse a case-insensitive string into a log level.
+// Purpose: Parse a case-insensitive string into a log level.
+// Inputs: Log level text.
+// Outputs: Matching `LogLevel` or exception.
+// Used by: CLI parsing.
 LogLevel logid::toLogLevel(std::string s) {
     std::string original_str = s;
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);

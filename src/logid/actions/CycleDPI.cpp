@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: CycleDPI.cpp
+ *
+ * Action that cycles through a configured list of DPI values. It keeps the
+ * current position in the list, applies the next value asynchronously, and
+ * exposes the list over IPC so clients can edit it at runtime.
+ */
+
 #include <actions/CycleDPI.h>
 #include <Device.h>
 #include <backend/hidpp20/features/ReprogControls.h>
@@ -23,10 +31,16 @@
 
 using namespace logid::actions;
 
-// IPC name used when this action is exported through D-Bus.
+// Purpose: Name the IPC interface for this action.
+// Inputs: None.
+// Outputs: Static interface name string.
+// Used by: action construction.
 const char* CycleDPI::interface_name = "CycleDPI";
 
-// Wire the action to the DPI feature and expose the cycle list over IPC.
+// Purpose: Bind the action to the DPI feature and expose the cycle list.
+// Inputs: Device, config, and parent IPC node.
+// Outputs: Action object with IPC methods.
+// Used by: DPI cycling buttons.
 CycleDPI::CycleDPI(Device* device, config::CycleDPI& config,
                    [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
         Action(device, interface_name, {
@@ -50,14 +64,20 @@ CycleDPI::CycleDPI(Device* device, config::CycleDPI& config,
     }
 }
 
-// Read the current DPI list in a thread-safe way.
+// Purpose: Return the configured DPI list.
+// Inputs: None.
+// Outputs: Current DPI values.
+// Used by: IPC `GetDPIs`.
 std::vector<int> CycleDPI::getDPIs() const {
     std::shared_lock lock(_config_mutex);
     auto dpis = _config.dpis.value_or(std::list<int>());
     return {dpis.begin(), dpis.end()};
 }
 
-// Replace the DPI list and restart from the first value.
+// Purpose: Replace the DPI list and restart from the first value.
+// Inputs: New DPI list.
+// Outputs: Config list updated and iterator reset.
+// Used by: IPC `SetDPIs`.
 void CycleDPI::setDPIs(const std::vector<int>& dpis) {
     std::unique_lock lock(_config_mutex);
     std::lock_guard dpi_lock(_dpi_mutex);
@@ -65,7 +85,10 @@ void CycleDPI::setDPIs(const std::vector<int>& dpis) {
     _current_dpi = _config.dpis->cbegin();
 }
 
-// Advance to the next DPI value and apply it asynchronously.
+// Purpose: Advance to the next DPI and apply it asynchronously.
+// Inputs: None.
+// Outputs: Deferred DPI update on the worker queue.
+// Used by: button press handling.
 void CycleDPI::press() {
     _pressed = true;
     std::shared_lock lock(_config_mutex);
@@ -94,12 +117,18 @@ void CycleDPI::press() {
     }
 }
 
-// Release only clears the pressed marker; the actual change happens on press.
+// Purpose: Clear the pressed marker.
+// Inputs: None.
+// Outputs: Button state no longer active.
+// Used by: button release handling.
 void CycleDPI::release() {
     _pressed = false;
 }
 
-// Keep the button temporarily diverted while the action is active.
+// Purpose: Mark the button as temporarily diverted.
+// Inputs: None.
+// Outputs: Reprog flag bits.
+// Used by: hardware remapping.
 uint8_t CycleDPI::reprogFlags() const {
     return backend::hidpp20::ReprogControls::TemporaryDiverted;
 }

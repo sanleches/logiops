@@ -16,6 +16,15 @@
  *
  */
 
+/*
+ * File: logid.cpp
+ *
+ * Daemon entry point for logiops. This file is responsible for parsing the
+ * command line, loading configuration, starting worker infrastructure, wiring
+ * up the IPC server, creating the virtual input target, and handing control to
+ * the device manager that discovers and configures Logitech hardware.
+ */
+
 #include <DeviceManager.h>
 #include <InputDevice.h>
 #include <util/task.h>
@@ -33,8 +42,10 @@ static constexpr auto default_config = "/etc/logid.cfg";
 
 using namespace logid;
 
-// CLI parsing is intentionally small and direct: the daemon only needs to know
-// where the config file lives and how chatty logging should be.
+// Command-line options are intentionally minimal because the daemon's runtime
+// behavior is mostly driven by the config file. The parser only needs to know
+// which config file to load and which log level should be active before the
+// rest of startup begins.
 struct CmdlineOptions {
     std::string config_file = default_config;
 };
@@ -49,8 +60,10 @@ enum class Option {
     Version
 };
 
-// Parse the daemon command line before any config or device work starts.
-// This runs before any worker threads or hardware access so mistakes are caught early.
+// Purpose: Parse the daemon command line before any config or device work starts.
+// Inputs: `argc`, `argv`, and the mutable `options` output.
+// Outputs: Populates the config path and log level, or exits on help/version/error.
+// Used by: `main()`.
 void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
     for (int i = 1; i < argc; i++) {
         Option option = Option::None;
@@ -134,20 +147,23 @@ Possible options are:
 }
 
 int main(int argc, char** argv) {
-    // Load CLI settings first so the rest of startup uses the right config file
-    // and log level.
+    // Purpose: Boot the daemon in a predictable order.
+    // Inputs: Process arguments and the runtime environment.
+    // Outputs: A running daemon or an early exit on startup failure.
+    // References: `Configuration`, `InputDevice`, `DeviceManager`, and
+    // `ipcgull::make_server()`.
     CmdlineOptions options{};
     readCliOptions(argc, argv, options);
     std::shared_ptr<Configuration> config;
     std::shared_ptr<InputDevice> virtual_input;
 
 
-    // Keep stdout unbuffered so journald and similar log collectors see lines immediately.
-    // That makes startup failures visible before the daemon exits.
+    // Keep stdout unbuffered so startup logs reach journald and similar
+    // collectors immediately.
     setbuf(stdout, NULL);
 
-    // Read the daemon configuration before creating devices or IPC state.
-    // Startup is aborted early if the config file cannot be parsed.
+    // Load the config before touching devices or IPC so the rest of the
+    // runtime uses a stable snapshot of user preferences and defaults.
     try {
         config = std::make_shared<Configuration>(options.config_file);
     } catch (std::exception &e) {
@@ -155,21 +171,24 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    // Worker threads handle deferred actions and configuration updates.
+    // Worker threads run deferred actions and profile updates so input handling
+    // can stay responsive while slower configuration work happens elsewhere.
     init_workers(config->workers.value_or(defaults::workers));
 
-    // The daemon can publish IPC on either the system bus or the user bus.
+    // The daemon can publish IPC on either the system bus or the user bus,
+    // depending on the build-time bus selection.
 #ifdef USE_USER_BUS
     auto server_bus = ipcgull::IPCGULL_USER;
 #else
     auto server_bus = ipcgull::IPCGULL_SYSTEM;
 #endif
 
-    // Create the IPC server after the config is loaded so the exported tree matches it.
+    // Create the IPC server only after config is available so the exported
+    // object tree is consistent with the current runtime configuration.
     auto server = ipcgull::make_server(SERVICE_ROOT_NAME, server_root_node, server_bus);
 
-    // Create the virtual input device that translated actions will write into.
-    // This is the synthetic keyboard/mouse device visible to the rest of the OS.
+    // Create the synthetic keyboard/mouse target that action objects write to.
+    // This is the OS-visible device used to emit remapped input events.
     try {
         virtual_input = std::make_unique<InputDevice>(virtual_input_name);
     } catch (std::system_error& e) {
@@ -177,8 +196,9 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    // Device discovery and device-specific callbacks run asynchronously on their own I/O path.
-    // The manager owns the lifetime of direct devices, receivers, and their IPC nodes.
+    // Device discovery and device-specific callbacks run asynchronously on a
+    // dedicated I/O path. The manager owns the lifetime of direct devices,
+    // receivers, and the IPC nodes exported for them.
     auto device_manager = DeviceManager::make<DeviceManager>(config, virtual_input, server);
 
     device_manager->enumerate();

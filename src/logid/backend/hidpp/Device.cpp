@@ -16,6 +16,14 @@
  *
  */
 
+/*
+ * File: backend/hidpp/Device.cpp
+ *
+ * HID++ transport wrapper that promotes a raw Logitech node into a device that
+ * can send and receive HID++ reports, verify device stability, and translate
+ * transport-level responses into higher-level errors and device metadata.
+ */
+
 #include <backend/hidpp20/Device.h>
 #include <backend/hidpp20/features/Root.h>
 #include <backend/hidpp20/features/DeviceName.h>
@@ -30,7 +38,10 @@ using namespace logid::backend::hidpp;
 
 using namespace std::chrono;
 
-// Human-readable messages for invalid HID++ device promotion.
+// Purpose: Describe why a raw node could not become a HID++ device.
+// Inputs: Stored reason code.
+// Outputs: Human-readable `what()` text.
+// Used by: device discovery and retry logic.
 const char* Device::InvalidDevice::what() const noexcept {
     switch (_reason) {
         case NoHIDPPReport:
@@ -46,12 +57,18 @@ const char* Device::InvalidDevice::what() const noexcept {
     }
 }
 
-// Expose the failure reason so callers can decide whether to retry.
+// Purpose: Expose the failure reason for classification.
+// Inputs: None.
+// Outputs: A `Reason` enum value.
+// Used by: callers that need retry vs skip decisions.
 Device::InvalidDevice::Reason Device::InvalidDevice::code() const noexcept {
     return _reason;
 }
 
-// Wrap a raw device path with HID++ timeout handling.
+// Purpose: Build the generic HID++ transport wrapper from a path.
+// Inputs: Raw path, device index, device monitor, and timeout.
+// Outputs: A transport object ready for probing.
+// Used by: direct-device construction paths.
 Device::Device(const std::string& path, DeviceIndex index,
                const std::shared_ptr<raw::DeviceMonitor>& monitor, double timeout) :
         io_timeout(duration_cast<milliseconds>(
@@ -60,7 +77,10 @@ Device::Device(const std::string& path, DeviceIndex index,
         _receiver(nullptr), _path(path), _index(index) {
 }
 
-// Wrap an already-open raw device with HID++ timeout handling.
+// Purpose: Build the generic HID++ transport wrapper from an open raw device.
+// Inputs: `RawDevice`, device index, and timeout.
+// Outputs: A transport object ready for probing.
+// Used by: code that already owns the fd.
 Device::Device(std::shared_ptr<raw::RawDevice> raw_device, DeviceIndex index,
                double timeout) :
         io_timeout(duration_cast<milliseconds>(
@@ -69,7 +89,10 @@ Device::Device(std::shared_ptr<raw::RawDevice> raw_device, DeviceIndex index,
         _path(_raw_device->rawPath()), _index(index) {
 }
 
-// Build a HID++ device from a receiver connection event.
+// Purpose: Build the generic HID++ transport wrapper for a receiver event.
+// Inputs: Receiver, connection event, and timeout.
+// Outputs: A transport object attached to the receiver's raw device.
+// Used by: `Receiver::addDevice()`.
 Device::Device(const std::shared_ptr<hidpp10::Receiver>& receiver,
                hidpp::DeviceConnectionEvent event, double timeout) :
         io_timeout(duration_cast<milliseconds>(
@@ -86,7 +109,10 @@ Device::Device(const std::shared_ptr<hidpp10::Receiver>& receiver,
         _pid = receiver->getPairingInfo(_index).pid;
 }
 
-// Build a HID++ device directly from a paired receiver slot.
+// Purpose: Build the generic HID++ transport wrapper for an existing slot.
+// Inputs: Receiver, slot index, and timeout.
+// Outputs: A transport object attached to the receiver's raw device.
+// Used by: paired-slot construction paths.
 Device::Device(const std::shared_ptr<hidpp10::Receiver>& receiver,
                DeviceIndex index, double timeout) :
         io_timeout(duration_cast<milliseconds>(
@@ -113,8 +139,10 @@ const std::tuple<uint8_t, uint8_t>& Device::version() const {
 }
 
 
-// Promote the raw device into a HID++ device, attach report callbacks, and run init.
-// This is where the raw hidraw stream turns into something the daemon can understand.
+// Purpose: Promote the raw transport into a live HID++ device.
+// Inputs: The already-open raw device state.
+// Outputs: Report handlers, version detection, and device metadata.
+// References: `getSupportedReports()` and `handleEvent()`.
 void Device::_setupReportsAndInit() {
     _event_handlers = std::make_shared<EventHandlerList<Device>>();
 
@@ -143,9 +171,10 @@ void Device::_setupReportsAndInit() {
     _init();
 }
 
-// Discover the device version, verify it is stable, and cache its name and pid.
-// The version check decides whether the device should be handled as HID++ 1.0
-// or HID++ 2.0.
+// Purpose: Discover protocol version and cache stable identity fields.
+// Inputs: None.
+// Outputs: Version, name, and product ID.
+// Used by: feature setup and IPC metadata.
 void Device::_init() {
     try {
         hidpp20::Root root(this);
@@ -162,8 +191,8 @@ void Device::_init() {
         throw DeviceNotReady();
     }
 
-    // Do a stability test before going further.
-    // This protects against devices that answer once and then vanish.
+    // Check stability before continuing. This avoids configuring a device that
+    // only responded briefly and then disappeared or fell asleep.
     if (std::get<0>(_version) >= 2) {
         if (!isStable20()) {
             throw DeviceNotReady();
@@ -200,12 +229,18 @@ void Device::_init() {
     }
 }
 
-// Register a report callback.
+// Purpose: Register a callback for incoming HID++ reports.
+// Inputs: One callable handler.
+// Outputs: An RAII lock that keeps the handler alive.
+// Used by: feature wrappers and protocol layers.
 EventHandlerLock<Device> Device::addEventHandler(EventHandler handler) {
     return {_event_handlers, _event_handlers->add(std::move(handler))};
 }
 
-// Dispatch one incoming report, skipping response traffic for our own requests.
+// Purpose: Dispatch one incoming report to the event handlers.
+// Inputs: A decoded HID++ report.
+// Outputs: Callback execution unless the report matched an in-flight request.
+// Used by: the raw report handler.
 void Device::handleEvent(Report& report) {
     if (responseReport(report))
         return;
@@ -213,8 +248,10 @@ void Device::handleEvent(Report& report) {
     _event_handlers->run_all(report);
 }
 
-// Send a report and wait for the matching response or timeout.
-// The send mutex serializes requests so the response matching logic stays simple.
+// Purpose: Send a HID++ request and wait for the matching response.
+// Inputs: One report to transmit.
+// Outputs: Matching response report or protocol error/timeout.
+// References: `_send_mutex`, `_response_mutex`, and `_response_cv`.
 Report Device::sendReport(const Report& report) {
     /* Must complete transaction before next send */
     std::lock_guard send_lock(_send_mutex);
@@ -252,8 +289,10 @@ Report Device::sendReport(const Report& report) {
     throw std::runtime_error("unhandled variant type");
 }
 
-// Return true when the report completes an in-flight request.
-// Requests are matched by sub-ID and address so unrelated traffic is ignored.
+// Purpose: Check whether a report answers the current in-flight request.
+// Inputs: One incoming report.
+// Outputs: `true` if the report was consumed as a response.
+// Used by: `handleEvent()`.
 bool Device::responseReport(const Report& report) {
     std::lock_guard lock(_response_mutex);
     Response response = report;
@@ -289,27 +328,36 @@ const std::shared_ptr<raw::RawDevice>& Device::rawDevice() const {
     return _raw_device;
 }
 
-// Send a report after applying HID++-specific fixups.
-// Some requests need their report type or address rewritten before transmission.
+// Purpose: Apply HID++ fixups and write the request to hardware.
+// Inputs: One report to send.
+// Outputs: Raw report bytes written to the device.
+// Used by: `sendReport()` and `sendReportNoACK()`.
 void Device::_sendReport(Report report) {
     reportFixup(report);
     _raw_device->sendReport(report.rawReport());
 }
 
-// Send a report without waiting for a response.
+// Purpose: Send a HID++ request without waiting for a reply.
+// Inputs: One report to transmit.
+// Outputs: Raw report bytes written to the device.
+// Used by: one-way operations and host-switch commands.
 void Device::sendReportNoACK(const Report& report) {
     std::lock_guard lock(_send_mutex);
     _sendReport(report);
 }
 
-// HID++ 1.0 devices are assumed stable once detected.
-// There is no additional ping-based verification path here.
+// Purpose: Treat HID++ 1.0 devices as stable once detected.
+// Inputs: None.
+// Outputs: `true`.
+// Used by: `_init()`.
 bool Device::isStable10() {
     return true;
 }
 
-// Ping a HID++ 2.0 root feature to verify the device stays responsive.
-// This is a lightweight sanity check before the daemon commits to using the device.
+// Purpose: Ping the HID++ 2.0 root feature to confirm liveness.
+// Inputs: None.
+// Outputs: `true` if the ping round-trip succeeds.
+// Used by: `_init()`.
 bool Device::isStable20() {
     static const std::string ping_seq = "hello";
 

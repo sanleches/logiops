@@ -16,6 +16,15 @@
  *
  */
 
+/*
+ * File: DeviceMonitor.cpp
+ *
+ * Hotplug monitor for hidraw devices. This layer owns the shared raw I/O
+ * monitor, subscribes to udev notifications, and retries devices that appear
+ * before they are fully ready so the higher-level daemon code sees stable
+ * device objects rather than transient kernel state.
+ */
+
 #include <backend/raw/DeviceMonitor.h>
 #include <backend/raw/IOMonitor.h>
 #include <backend/raw/RawDevice.h>
@@ -33,8 +42,10 @@ extern "C"
 using namespace logid;
 using namespace logid::backend::raw;
 
-// Initialize udev and the raw-device I/O monitor.
-// This layer watches for hidraw nodes appearing and disappearing at runtime.
+// Purpose: Initialize udev and the shared raw-device monitor.
+// Inputs: None.
+// Outputs: A hotplug monitor ready to enumerate hidraw nodes.
+// Used by: `DeviceManager` and other raw backends.
 DeviceMonitor::DeviceMonitor() : _io_monitor(std::make_shared<IOMonitor>()),
                                   _ready(false) {
     int ret;
@@ -75,7 +86,10 @@ DeviceMonitor::DeviceMonitor() : _io_monitor(std::make_shared<IOMonitor>()),
     _fd = udev_monitor_get_fd(_udev_monitor);
 }
 
-// Tear down the I/O monitor and udev handles.
+// Purpose: Tear down udev and I/O monitor state.
+// Inputs: None.
+// Outputs: Kernel and udev resources released.
+// Used by: object destruction.
 DeviceMonitor::~DeviceMonitor() {
     if (_ready)
         _io_monitor->remove(_fd);
@@ -86,8 +100,10 @@ DeviceMonitor::~DeviceMonitor() {
         udev_unref(_udev_context);
 }
 
-// Start receiving hotplug notifications after the derived object is ready.
-// `ready()` is separate so subclasses can finish their own setup first.
+// Purpose: Enable hotplug callbacks after subclass setup completes.
+// Inputs: None.
+// Outputs: Udev events start flowing into `_addHandler()` and `_removeHandler()`.
+// Used by: derived constructors.
 void DeviceMonitor::ready() {
     if (_ready)
         return;
@@ -123,8 +139,10 @@ void DeviceMonitor::ready() {
     });
 }
 
-// Enumerate existing hidraw nodes and feed them through the add path.
-// This lets the daemon see devices that were already plugged in before startup.
+// Purpose: Enumerate hidraw nodes that already exist at startup.
+// Inputs: None.
+// Outputs: Each node is sent through the same add path as hotplug events.
+// Used by: daemon startup.
 void DeviceMonitor::enumerate() {
     int ret;
     struct udev_enumerate* udev_enum = udev_enumerate_new(_udev_context);
@@ -160,8 +178,10 @@ void DeviceMonitor::enumerate() {
     udev_enumerate_unref(udev_enum);
 }
 
-// Add one device, retrying with exponential backoff when readiness is transient.
-// Some hidraw nodes appear before the underlying device is fully initialized.
+// Purpose: Add one hidraw node with retry/backoff.
+// Inputs: Kernel path and attempt counter.
+// Outputs: A device add, a deferred retry, or a logged skip.
+// References: `backend::hidpp::getSupportedReports()` and `DeviceNotReady`.
 void DeviceMonitor::_addHandler(const std::string& device, int tries) {
     try {
         auto supported_reports = backend::hidpp::getSupportedReports(
@@ -175,7 +195,8 @@ void DeviceMonitor::_addHandler(const std::string& device, int tries) {
             logPrintf(WARN, "Failed to add device %s after %d tries. Treating as failure.",
                       device.c_str(), max_tries);
         } else {
-            /* Do exponential backoff for 2^tries * backoff ms. */
+            // Exponential backoff keeps transient startup failures from looking
+            // like permanent device errors.
             std::chrono::milliseconds wait((1 << tries) * ready_backoff);
             logPrintf(DEBUG, "Failed to add device %s on try %d, backing off for %dms",
                       device.c_str(), tries + 1, wait.count());
@@ -189,8 +210,10 @@ void DeviceMonitor::_addHandler(const std::string& device, int tries) {
     }
 }
 
-// Remove one device from the derived backend.
-// The derived class decides how to tear down its own device objects.
+// Purpose: Remove one hidraw node from the derived backend.
+// Inputs: Kernel path.
+// Outputs: Backend-specific teardown.
+// Used by: udev remove events.
 void DeviceMonitor::_removeHandler(const std::string& device) {
     try {
         removeDevice(device);

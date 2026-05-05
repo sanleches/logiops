@@ -16,25 +16,44 @@
  *
  */
 
+/*
+ * File: backend/hidpp10/Receiver.cpp
+ *
+ * HID++ 1.0 receiver support. This module probes whether a device is really a
+ * Logitech wireless receiver, exposes the receiver-specific pairing and slot
+ * management registers, and provides the operations needed for pairing,
+ * discovery, disconnection, and slot inspection.
+ */
+
 #include <backend/hidpp10/Receiver.h>
 #include <cassert>
 
 using namespace logid::backend::hidpp10;
 using namespace logid::backend;
 
-// Return a fixed message when the hidraw node is not a receiver.
+// Purpose: Describe a node that is not a receiver.
+// Inputs: None.
+// Outputs: Short `what()` text.
+// Used by: receiver detection.
 const char* InvalidReceiver::what() const noexcept {
     return "Not a receiver";
 }
 
-// Open the HID++ 1.0 receiver device and run the receiver-specific check.
+// Purpose: Build a HID++ 1.0 receiver wrapper.
+// Inputs: Path, raw monitor, and timeout.
+// Outputs: A transport wrapper ready for receiver checks.
+// Used by: receiver discovery paths.
 Receiver::Receiver(const std::string& path, const std::shared_ptr<raw::DeviceMonitor>& monitor,
                    double timeout) : Device(path, hidpp::DefaultDevice, monitor, timeout) {
 }
 
-// Verify that the device behaves like a receiver and detect Bolt receivers.
+// Purpose: Verify that the node behaves like a receiver and detect Bolt.
+// Inputs: None.
+// Outputs: Receiver validity and Bolt classification.
+// References: receiver notification flags and PID heuristics.
 void Receiver::_receiverCheck() {
-    // Check if the device is a receiver
+    // Access the notification register. An invalid-address error means the node
+    // is just a normal device rather than a receiver.
     try {
         getNotificationFlags();
     } catch (hidpp10::Error& e) {
@@ -46,7 +65,10 @@ void Receiver::_receiverCheck() {
     _is_bolt = pid() == 0xc548;
 }
 
-// Read the notification flags bitmask from the receiver.
+// Purpose: Read the receiver notification mask.
+// Inputs: None.
+// Outputs: The current notification flag set.
+// Used by: receiver configuration.
 Receiver::NotificationFlags Receiver::getNotificationFlags() {
     auto response = getRegister(EnableHidppNotifications, {}, hidpp::ReportType::Short);
 
@@ -58,7 +80,10 @@ Receiver::NotificationFlags Receiver::getNotificationFlags() {
     return flags;
 }
 
-// Write the notification mask back to the receiver.
+// Purpose: Write the receiver notification mask.
+// Inputs: Desired flag set.
+// Outputs: A receiver register write.
+// Used by: receiver configuration.
 void Receiver::setNotifications(NotificationFlags flags) {
     std::vector<uint8_t> request(3);
 
@@ -72,20 +97,29 @@ void Receiver::setNotifications(NotificationFlags flags) {
     setRegister(EnableHidppNotifications, request, hidpp::ReportType::Short);
 }
 
-// Trigger an enumeration pass for paired devices.
+// Purpose: Trigger device enumeration on the receiver.
+// Inputs: None.
+// Outputs: A receiver enumeration request.
+// Used by: startup discovery.
 void Receiver::enumerate() {
     setRegisterNoResponse(ConnectionState, {2}, hidpp::ReportType::Short);
 }
 
 ///TODO: Investigate usage
-// Return the current connection-state register value for one slot.
+// Purpose: Read one slot's connection state.
+// Inputs: Slot index.
+// Outputs: Raw state byte from the receiver.
+// Used by: diagnostics and slot handling.
 uint8_t Receiver::getConnectionState(hidpp::DeviceIndex index) {
     auto response = getRegister(ConnectionState, {index}, hidpp::ReportType::Short);
 
     return response[0];
 }
 
-// Start standard HID++ 1.0 pairing or Bolt pairing depending on the receiver type.
+// Purpose: Start pairing on classic or Bolt receivers.
+// Inputs: Pairing timeout.
+// Outputs: Pairing request with the right register format.
+// Used by: IPC pairing start.
 void Receiver::startPairing(uint8_t timeout) {
     std::vector<uint8_t> request(3);
 
@@ -103,8 +137,10 @@ void Receiver::startPairing(uint8_t timeout) {
     }
 }
 
-// bolt pairing request from solaar
-// Start Bolt pairing with discovery metadata.
+// Purpose: Start Bolt pairing with discovery metadata.
+// Inputs: Device discovery event.
+// Outputs: Bolt pairing request.
+// Used by: Bolt discovery UI flow.
 void Receiver::startBoltPairing(const DeviceDiscoveryEvent& discovery) {
     std::vector<uint8_t> request(10);
 
@@ -122,7 +158,10 @@ void Receiver::startBoltPairing(const DeviceDiscoveryEvent& discovery) {
     setRegister(BoltDevicePairing, request, hidpp::ReportType::Long);
 }
 
-// Stop the active pairing flow.
+// Purpose: Stop the active pairing flow.
+// Inputs: None.
+// Outputs: Pairing stop request.
+// Used by: IPC pairing stop.
 void Receiver::stopPairing() {
     std::vector<uint8_t> request(3);
 
@@ -135,7 +174,10 @@ void Receiver::stopPairing() {
         setRegister(DevicePairing, request, hidpp::ReportType::Short);
 }
 
-// Start a Bolt discovery flow.
+// Purpose: Start a Bolt discovery flow.
+// Inputs: Discovery timeout.
+// Outputs: A Bolt discovery request.
+// Used by: IPC discovery start.
 void Receiver::startDiscover(uint8_t timeout) {
     std::vector<uint8_t> request = {timeout, 1};
 
@@ -145,7 +187,10 @@ void Receiver::startDiscover(uint8_t timeout) {
     setRegister(BoltDeviceDiscovery, request, hidpp::ReportType::Short);
 }
 
-// Stop a Bolt discovery flow.
+// Purpose: Stop a Bolt discovery flow.
+// Inputs: None.
+// Outputs: A Bolt discovery stop request.
+// Used by: IPC discovery stop.
 void Receiver::stopDiscover() {
     std::vector<uint8_t> request = {0, 2};
 
@@ -155,7 +200,10 @@ void Receiver::stopDiscover() {
     setRegister(BoltDeviceDiscovery, request, hidpp::ReportType::Short);
 }
 
-// Disconnect a paired device slot.
+// Purpose: Disconnect a paired device slot.
+// Inputs: Slot index.
+// Outputs: A disconnect request using the right receiver register.
+// Used by: IPC `Unpair`.
 void Receiver::disconnect(hidpp::DeviceIndex index) {
     std::vector<uint8_t> request(2);
 
@@ -168,7 +216,10 @@ void Receiver::disconnect(hidpp::DeviceIndex index) {
         setRegister(DevicePairing, request, hidpp::ReportType::Short);
 }
 
-// Query activity counters for all wireless slots.
+// Purpose: Query activity counters for all wireless slots.
+// Inputs: None.
+// Outputs: Slot activity map.
+// Used by: diagnostics and status views.
 std::map<hidpp::DeviceIndex, uint8_t> Receiver::getDeviceActivity() {
     auto response = getRegister(DeviceActivity, {}, hidpp::ReportType::Long);
 
@@ -179,7 +230,10 @@ std::map<hidpp::DeviceIndex, uint8_t> Receiver::getDeviceActivity() {
     return device_activity;
 }
 
-// Read pairing details for one wireless slot.
+// Purpose: Read pairing details for one wireless slot.
+// Inputs: Slot index.
+// Outputs: PID, device type, and slot metadata.
+// Used by: `pairedDevices()`.
 struct Receiver::PairingInfo
 Receiver::getPairingInfo(hidpp::DeviceIndex index) {
     std::vector<uint8_t> request(1);
@@ -212,7 +266,10 @@ Receiver::getPairingInfo(hidpp::DeviceIndex index) {
     return info;
 }
 
-// Read the extended pairing details for one wireless slot.
+// Purpose: Read the extended pairing details for one wireless slot.
+// Inputs: Slot index.
+// Outputs: Serial number, report hints, and power-switch location.
+// Used by: `pairedDevices()`.
 struct Receiver::ExtendedPairingInfo
 Receiver::getExtendedPairingInfo(hidpp::DeviceIndex index) {
     const int device_num_offset = _is_bolt ? 0x50 : 0x2f;
@@ -242,18 +299,18 @@ Receiver::getExtendedPairingInfo(hidpp::DeviceIndex index) {
     return info;
 }
 
-// Read a paired device name, including Bolt chunked names when needed.
+// Purpose: Read a paired device name.
+// Inputs: Slot index.
+// Outputs: Human-readable device name.
+// Used by: `pairedDevices()` and device setup.
 std::string Receiver::getDeviceName(hidpp::DeviceIndex index) {
     std::vector<uint8_t> request(2);
     std::string name;
     request[0] = index;
     if (_is_bolt) {
-        /* Undocumented, deduced the following
-         * param 1 refers to part of string, 1-indexed
-         *
-         * response at 0x01 is [reg] [param 1] [size] [str...]
-         * response at 0x02-... is [next part of str...]
-         */
+        // Bolt splits long names into chunks. The first request returns the
+        // length plus the first payload chunk, and later requests fetch the
+        // remaining pieces in order.
         request[0] += 0x60;
         request[1] = 0x01;
 
@@ -290,13 +347,19 @@ std::string Receiver::getDeviceName(hidpp::DeviceIndex index) {
     return name;
 }
 
-// Parse a device-disconnect notification.
+// Purpose: Parse a device-disconnect notification.
+// Inputs: One HID++ report.
+// Outputs: The disconnected device index.
+// Used by: receiver report handling.
 hidpp::DeviceIndex Receiver::deviceDisconnectionEvent(const hidpp::Report& report) {
     assert(report.subId() == DeviceDisconnection);
     return report.deviceIndex();
 }
 
-// Parse a device-connect notification into a structured event.
+// Purpose: Parse a device-connect notification into a structured event.
+// Inputs: One HID++ report.
+// Outputs: A connection event describing the new slot state.
+// Used by: receiver report handling.
 hidpp::DeviceConnectionEvent Receiver::deviceConnectionEvent(const hidpp::Report& report) {
     assert(report.subId() == DeviceConnection);
 
@@ -316,7 +379,10 @@ hidpp::DeviceConnectionEvent Receiver::deviceConnectionEvent(const hidpp::Report
     };
 }
 
-// Parse a discovery event, stitching together multi-part Bolt payloads.
+// Purpose: Parse a discovery event and assemble multi-part Bolt payloads.
+// Inputs: Mutable discovery event plus one HID++ report.
+// Outputs: `true` when the event is complete enough to stop reading chunks.
+// Used by: discovery report handling.
 bool Receiver::fillDeviceDiscoveryEvent(DeviceDiscoveryEvent& event,
                                         const hidpp::Report& report) {
     assert(report.subId() == DeviceDiscovered);
@@ -324,7 +390,8 @@ bool Receiver::fillDeviceDiscoveryEvent(DeviceDiscoveryEvent& event,
     auto data = report.paramBegin();
 
     if (data[1] == 0) {
-        // device discovery event
+        // This is the first discovery packet, so seed the event fields and
+        // wait for possible follow-up name chunks.
 
         uint64_t address = 0 ;
         for (int i = 0; i < 6; ++i)
@@ -339,7 +406,7 @@ bool Receiver::fillDeviceDiscoveryEvent(DeviceDiscoveryEvent& event,
 
         return false;
     } else {
-        /* bad sequence, do not continue */
+        // Ignore out-of-sequence chunks so stale packets do not corrupt the name.
         if (event.seq_num != report.address())
             return false;
 
@@ -362,7 +429,10 @@ bool Receiver::fillDeviceDiscoveryEvent(DeviceDiscoveryEvent& event,
     }
 }
 
-// Parse a pair-status notification.
+// Purpose: Parse a pair-status notification.
+// Inputs: One HID++ report.
+// Outputs: Pairing active state and error code.
+// Used by: receiver report handling.
 PairStatusEvent Receiver::pairStatusEvent(const hidpp::Report& report) {
     assert(report.subId() == PairStatus);
 
@@ -372,7 +442,10 @@ PairStatusEvent Receiver::pairStatusEvent(const hidpp::Report& report) {
     };
 }
 
-// Parse a Bolt pair-status notification.
+// Purpose: Parse a Bolt pair-status notification.
+// Inputs: One HID++ report.
+// Outputs: Pairing active state and error code.
+// Used by: receiver report handling.
 BoltPairStatusEvent Receiver::boltPairStatusEvent(const hidpp::Report& report) {
     assert(report.subId() == BoltPairStatus);
 
@@ -382,6 +455,10 @@ BoltPairStatusEvent Receiver::boltPairStatusEvent(const hidpp::Report& report) {
     };
 }
 
+// Purpose: Parse a discovery-status notification.
+// Inputs: One HID++ report.
+// Outputs: Discovery active state and error code.
+// Used by: receiver report handling.
 DiscoveryStatusEvent Receiver::discoveryStatusEvent(const hidpp::Report& report) {
     assert(report.subId() == DiscoveryStatus);
 

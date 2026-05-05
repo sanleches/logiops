@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: ChangeDPI.cpp
+ *
+ * Action that adjusts a device's DPI by a configured increment. The action
+ * reads the DPI feature from the device, applies the change asynchronously, and
+ * exposes the tuning values over IPC.
+ */
+
 #include <actions/ChangeDPI.h>
 #include <Device.h>
 #include <backend/hidpp20/features/ReprogControls.h>
@@ -23,10 +31,16 @@
 
 using namespace logid::actions;
 
-// IPC name used when this action is exported through D-Bus.
+// Purpose: Name the IPC interface for this action.
+// Inputs: None.
+// Outputs: Static interface name string.
+// Used by: action construction.
 const char* ChangeDPI::interface_name = "ChangeDPI";
 
-// Wire the action to the device DPI feature and expose its config as IPC methods.
+// Purpose: Bind the action to the DPI feature and expose its config.
+// Inputs: Device, config, and parent IPC node.
+// Outputs: Action object with IPC methods.
+// Used by: DPI adjustment buttons.
 ChangeDPI::ChangeDPI(
         Device* device, config::ChangeDPI& config,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
@@ -45,7 +59,10 @@ ChangeDPI::ChangeDPI(
                   _device->hidpp20().deviceIndex());
 }
 
-// Apply the configured DPI increment on press, using a background task so input handling stays responsive.
+// Purpose: Apply the configured DPI increment on press.
+// Inputs: None.
+// Outputs: Deferred DPI update on the worker queue.
+// Used by: button press handling.
 void ChangeDPI::press() {
     _pressed = true;
     std::shared_lock lock(_config_mutex);
@@ -69,29 +86,44 @@ void ChangeDPI::press() {
     }
 }
 
-// Release only clears the pressed marker; the actual change happens on press.
+// Purpose: Clear the pressed marker.
+// Inputs: None.
+// Outputs: Button state no longer marked active.
+// Used by: button release handling.
 void ChangeDPI::release() {
     _pressed = false;
 }
 
-// Report the current increment and sensor selection.
+// Purpose: Return the current increment and sensor selection.
+// Inputs: None.
+// Outputs: DPI increment and sensor index.
+// Used by: IPC `GetConfig`.
 uint8_t ChangeDPI::reprogFlags() const {
     return backend::hidpp20::ReprogControls::TemporaryDiverted;
 }
 
-// Read the current config values in a thread-safe way for IPC callers.
+// Purpose: Return the current config values.
+// Inputs: None.
+// Outputs: Increment and sensor selection.
+// Used by: IPC `GetConfig`.
 std::tuple<int16_t, uint16_t> ChangeDPI::getConfig() const {
     std::shared_lock lock(_config_mutex);
     return {_config.inc.value_or(0), _config.sensor.value_or(0)};
 }
 
-// Update the configured DPI increment.
+// Purpose: Update the configured DPI increment.
+// Inputs: New DPI delta.
+// Outputs: Config value updated.
+// Used by: IPC `SetChange`.
 void ChangeDPI::setChange(int16_t change) {
     std::unique_lock lock(_config_mutex);
     _config.inc = change;
 }
 
-// Update or clear the selected sensor index.
+// Purpose: Update or clear the selected sensor index.
+// Inputs: Sensor index and reset flag.
+// Outputs: Config value updated.
+// Used by: IPC `SetSensor`.
 void ChangeDPI::setSensor(uint8_t sensor, bool reset) {
     std::unique_lock lock(_config_mutex);
     if (reset) {

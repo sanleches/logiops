@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: ChangeHostAction.cpp
+ *
+ * Action that switches the device's active host/channel. The action keeps a
+ * normalized host selector in config, resolves the HID++ ChangeHost feature if
+ * available, and applies the change asynchronously on release.
+ */
+
 #include <actions/ChangeHostAction.h>
 #include <Device.h>
 #include <backend/hidpp20/features/ReprogControls.h>
@@ -25,10 +33,16 @@
 using namespace logid::actions;
 using namespace logid::backend;
 
-// IPC name used when this action is exported through D-Bus.
+// Purpose: Name the IPC interface for this action.
+// Inputs: None.
+// Outputs: Static interface name string.
+// Used by: action construction.
 const char* ChangeHostAction::interface_name = "ChangeHost";
 
-// Bind the action to the optional ChangeHost feature and normalize any configured host string.
+// Purpose: Bind the action to the optional ChangeHost feature.
+// Inputs: Device, config, and parent IPC node.
+// Outputs: Action object with IPC methods.
+// Used by: host-switch buttons.
 ChangeHostAction::ChangeHostAction(
         Device* device, config::ChangeHost& config,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent)
@@ -56,7 +70,10 @@ ChangeHostAction::ChangeHostAction(
     }
 }
 
-// Return the configured host selector as a string.
+// Purpose: Return the configured host selector.
+// Inputs: None.
+// Outputs: Host selector as text.
+// Used by: IPC `GetHost`.
 std::string ChangeHostAction::getHost() const {
     std::shared_lock lock(_config_mutex);
     if (_config.host.has_value()) {
@@ -69,7 +86,10 @@ std::string ChangeHostAction::getHost() const {
     }
 }
 
-// Store a host selector in normalized lowercase form.
+// Purpose: Store a host selector in normalized form.
+// Inputs: Host selector string.
+// Outputs: Config value updated.
+// Used by: IPC `SetHost`.
 void ChangeHostAction::setHost(std::string host) {
     std::transform(host.begin(), host.end(),
                    host.begin(), ::tolower);
@@ -81,12 +101,18 @@ void ChangeHostAction::setHost(std::string host) {
     }
 }
 
-// The action only triggers on release so a quick press does not change host immediately.
+// Purpose: Ignore the press edge.
+// Inputs: None.
+// Outputs: No action until release.
+// Used by: momentary host switching buttons.
 void ChangeHostAction::press() {
     // Do nothing, wait until release
 }
 
-// Apply the host change asynchronously so the device input path stays responsive.
+// Purpose: Apply the host change asynchronously.
+// Inputs: None.
+// Outputs: Deferred host-switch request.
+// Used by: button release handling.
 void ChangeHostAction::release() {
     std::shared_lock lock(_config_mutex);
     if (_change_host && _config.host.has_value()) {
@@ -113,7 +139,10 @@ void ChangeHostAction::release() {
     }
 }
 
-// The host-switch action temporarily diverts the hardware button.
+// Purpose: Mark the hardware button as temporarily diverted.
+// Inputs: None.
+// Outputs: Reprog flag bits.
+// Used by: hardware remapping.
 uint8_t ChangeHostAction::reprogFlags() const {
     return hidpp20::ReprogControls::TemporaryDiverted;
 }

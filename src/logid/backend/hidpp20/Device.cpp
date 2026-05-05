@@ -16,6 +16,15 @@
  *
  */
 
+/*
+ * File: backend/hidpp20/Device.cpp
+ *
+ * HID++ 2.0 transport specialization. This layer turns the generic HID++
+ * device wrapper into the version used by features, handling feature-function
+ * calls, response-slot multiplexing, and no-ACK command paths such as host
+ * switching.
+ */
+
 #include <cassert>
 #include <backend/hidpp20/Device.h>
 #include <backend/Error.h>
@@ -24,32 +33,46 @@
 using namespace logid::backend;
 using namespace logid::backend::hidpp20;
 
-// Construct a HID++ 2.0 device from a raw path.
+// Purpose: Build a HID++ 2.0 device from a raw path.
+// Inputs: Raw path, device index, monitor, and timeout.
+// Outputs: A version-specific transport wrapper.
+// Used by: direct-device discovery.
 Device::Device(const std::string& path, hidpp::DeviceIndex index,
                const std::shared_ptr<raw::DeviceMonitor>& monitor, double timeout) :
         hidpp::Device(path, index, monitor, timeout) {
 }
 
-// Construct a HID++ 2.0 device from an already-open raw device.
+// Purpose: Build a HID++ 2.0 device from an open raw device.
+// Inputs: Raw device, device index, and timeout.
+// Outputs: A version-specific transport wrapper.
+// Used by: paths that already own the fd.
 Device::Device(std::shared_ptr<raw::RawDevice> raw_device,
                hidpp::DeviceIndex index, double timeout) :
         hidpp::Device(std::move(raw_device), index, timeout) {
 }
 
-// Construct a HID++ 2.0 device from a receiver connection event.
+// Purpose: Build a HID++ 2.0 device from a receiver event.
+// Inputs: Receiver, slot event, and timeout.
+// Outputs: A version-specific transport wrapper.
+// Used by: `Receiver::addDevice()`.
 Device::Device(const std::shared_ptr<hidpp10::Receiver>& receiver,
                hidpp::DeviceConnectionEvent event, double timeout) :
         hidpp::Device(receiver, event, timeout) {
 }
 
-// Construct a HID++ 2.0 device from a paired receiver slot.
+// Purpose: Build a HID++ 2.0 device from a paired slot.
+// Inputs: Receiver, slot index, and timeout.
+// Outputs: A version-specific transport wrapper.
+// Used by: paired-slot paths.
 Device::Device(const std::shared_ptr<hidpp10::Receiver>& receiver,
                hidpp::DeviceIndex index, double timeout)
         : hidpp::Device(receiver, index, timeout) {
 }
 
-// Call a feature function and collect the response payload.
-// HID++ 2.0 features identify themselves by feature index plus function number.
+// Purpose: Call a HID++ 2.0 feature function and collect the payload.
+// Inputs: Feature index, function ID, and parameter bytes.
+// Outputs: The returned payload bytes.
+// References: feature index multiplexing and `sendReport()`.
 std::vector<uint8_t> Device::callFunction(uint8_t feature_index,
                                           uint8_t function, std::vector<uint8_t>& params) {
     hidpp::Report::Type type;
@@ -70,8 +93,10 @@ std::vector<uint8_t> Device::callFunction(uint8_t feature_index,
     return {response.paramBegin(), response.paramEnd()};
 }
 
-// Call a feature function without waiting for a response.
-// Used for commands that intentionally drop the link or do not reply.
+// Purpose: Call a HID++ 2.0 function without waiting for a reply.
+// Inputs: Feature index, function ID, and parameter bytes.
+// Outputs: Raw report bytes written to the device.
+// Used by: no-ACK feature paths.
 void Device::callFunctionNoResponse(uint8_t feature_index, uint8_t function,
                                     std::vector<uint8_t>& params) {
     hidpp::Report::Type type;
@@ -90,13 +115,16 @@ void Device::callFunctionNoResponse(uint8_t feature_index, uint8_t function,
     this->sendReportNoACK(request);
 }
 
-// Send a feature report and wait for the matching response or error.
-// The response slot chosen here is based on the feature number, which keeps
-// several feature calls from stepping on each other.
+// Purpose: Wait for the response that matches one HID++ 2.0 feature call.
+// Inputs: One feature report.
+// Outputs: Matching response or feature-level error.
+// References: response-slot multiplexing.
 hidpp::Report Device::sendReport(const hidpp::Report& report) {
     auto& response_slot = _responses[report.feature() % _responses.size()];
 
     std::unique_lock<std::mutex> response_lock(_response_mutex);
+    // Wait until the slot is free so a second call with the same feature does
+    // not overwrite the response bookkeeping.
     _response_cv.wait(response_lock, [&response_slot]() {
         return !response_slot.feature.has_value();
     });
@@ -128,17 +156,20 @@ hidpp::Report Device::sendReport(const hidpp::Report& report) {
     }
 }
 
-// Send a feature report without waiting for ACK.
-// This is important for actions like host switching, where the device may stop
-// replying as part of the command itself.
+// Purpose: Send a HID++ 2.0 feature report without waiting for ACK.
+// Inputs: One feature report.
+// Outputs: Raw report bytes written to the device.
+// Used by: commands that intentionally suppress replies.
 void Device::sendReportNoACK(const hidpp::Report& report) {
     hidpp::Report no_ack_report(report);
     no_ack_report.setSwId(hidpp::noAckSoftwareID);
     _sendReport(std::move(no_ack_report));
 }
 
-// Match incoming reports against the pending feature call slot.
-// Only the slot for the matching feature is allowed to consume the response.
+// Purpose: Match one incoming report against a pending feature slot.
+// Inputs: One incoming report.
+// Outputs: `true` if the report was consumed.
+// Used by: the raw report dispatch path.
 bool Device::responseReport(const hidpp::Report& report) {
     auto& response_slot = _responses[report.feature() % _responses.size()];
     std::lock_guard<std::mutex> lock(_response_mutex);
@@ -172,8 +203,10 @@ bool Device::responseReport(const hidpp::Report& report) {
     return true;
 }
 
-// Clear a pending response slot.
-// Once a request has been answered, the slot becomes available again.
+// Purpose: Clear one response slot after a request completes.
+// Inputs: None.
+// Outputs: The slot is made available for reuse.
+// Used by: `sendReport()`.
 void Device::ResponseSlot::reset() {
     response.reset();
     feature.reset();

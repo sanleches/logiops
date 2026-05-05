@@ -16,42 +16,59 @@
  *
  */
 
+/*
+ * File: backend/hidpp20/Feature.cpp
+ *
+ * Base implementation for HID++ 2.0 feature wrappers. Features resolve their
+ * runtime index through the ROOT feature, then delegate function calls back to
+ * the owning device so higher-level modules can interact with hardware using a
+ * small, typed abstraction instead of raw report assembly.
+ */
+
 #include <backend/hidpp20/Feature.h>
 #include <backend/hidpp20/Device.h>
 #include <backend/hidpp20/features/Root.h>
 
 using namespace logid::backend::hidpp20;
 
-// Report that the requested feature is not supported by the device.
-// The `what()` string is intentionally short because the feature ID already
-// identifies the unsupported capability.
+// Purpose: Describe an unsupported HID++ 2.0 feature.
+// Inputs: Stored feature ID.
+// Outputs: Short `what()` text.
+// Used by: feature construction and fallback handling.
 const char* UnsupportedFeature::what() const noexcept {
     return "Unsupported feature";
 }
 
-// Return the unsupported feature ID.
-// Callers often use this to print a better error message or choose a fallback.
+// Purpose: Return the unsupported feature ID.
+// Inputs: None.
+// Outputs: Feature ID.
+// Used by: error reporting and fallbacks.
 uint16_t UnsupportedFeature::code() const noexcept {
     return _f_id;
 }
 
-// Invoke a feature function and wait for the response payload.
-// The base class delegates to the parent device so feature code stays small.
+// Purpose: Invoke a feature function and wait for its payload.
+// Inputs: Function ID and parameter bytes.
+// Outputs: Response payload bytes.
+// References: owning device transport.
 std::vector<uint8_t> Feature::callFunction(uint8_t function_id,
                                            std::vector<uint8_t>& params) {
     return _device->callFunction(_index, function_id, params);
 }
 
-// Invoke a feature function without waiting for a response payload.
-// Used for commands that should not block on a reply.
+// Purpose: Invoke a feature function without waiting for a payload.
+// Inputs: Function ID and parameter bytes.
+// Outputs: Raw report bytes written to the device.
+// Used by: no-ACK feature paths.
 void Feature::callFunctionNoResponse(uint8_t function_id,
                                       std::vector<uint8_t>& params) {
     _device->callFunctionNoResponse(_index, function_id, params);
 }
 
-// Resolve the feature index from its compile-time ID, or fall back to ROOT.
-// Runtime feature indices are discovered by asking the ROOT feature where a
-// compile-time feature ID lives on the current device.
+// Purpose: Resolve a runtime feature index from a compile-time feature ID.
+// Inputs: Owning device and compile-time feature ID.
+// Outputs: Runtime feature index or `UnsupportedFeature`.
+// References: `Root::GetFeature`.
 Feature::Feature(Device* dev, uint16_t _id) : _device(dev) {
     _index = hidpp20::FeatureID::ROOT;
 
@@ -69,7 +86,7 @@ Feature::Feature(Device* dev, uint16_t _id) : _device(dev) {
             throw e;
         }
 
-        // 0 if not found
+        // 0 if not found.
         if (!_index)
             throw UnsupportedFeature(_id);
     }

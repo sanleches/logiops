@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: DPI.cpp
+ *
+ * DPI feature wrapper. This module binds the profile's DPI settings to the
+ * hardware adjustable-DPI feature, keeps per-sensor DPI lists cached, and
+ * exposes the live values over IPC.
+ */
+
 #include <features/DPI.h>
 #include <Device.h>
 #include <algorithm>
@@ -24,9 +32,10 @@
 using namespace logid::features;
 using namespace logid::backend;
 
-// Find the closest supported DPI value for the device's DPI list.
-// Some devices report a discrete list of values, while others report a range
-// plus a step size. This helper snaps the requested value to a valid number.
+// Purpose: Snap a requested DPI to the closest supported value.
+// Inputs: Supported DPI list and requested value.
+// Outputs: Supported DPI value or fallback nearest value.
+// Used by: DPI writes and profile configuration.
 uint16_t getClosestDPI(const hidpp20::AdjustableDPI::SensorDPIList& dpi_list,
                        uint16_t dpi) {
     if (dpi_list.isRange) {
@@ -58,8 +67,10 @@ uint16_t getClosestDPI(const hidpp20::AdjustableDPI::SensorDPIList& dpi_list,
     }
 }
 
-// Bind the DPI feature to the current profile and the device's adjustable DPI feature.
-// The wrapper keeps both the saved profile config and the live hardware object.
+// Purpose: Bind the profile DPI config to the adjustable-DPI feature.
+// Inputs: Device.
+// Outputs: Feature wrapper plus IPC interface.
+// Used by: device feature setup.
 DPI::DPI(Device* device) : DeviceFeature(device), _config(device->activeProfile().dpi) {
     try {
         _adjustable_dpi = std::make_shared<hidpp20::AdjustableDPI>
@@ -71,9 +82,10 @@ DPI::DPI(Device* device) : DeviceFeature(device), _config(device->activeProfile(
     _ipc_interface = _device->ipcNode()->make_interface<IPC>(this);
 }
 
-// Apply the configured DPI settings to each sensor.
-// If the profile stores one number, it applies to sensor 0. If it stores a list,
-// each list entry maps to a sensor in order.
+// Purpose: Apply the configured DPI values to each sensor.
+// Inputs: None.
+// Outputs: Hardware DPI state updated.
+// Used by: device reconfiguration.
 void DPI::configure() {
     std::shared_lock lock(_config_mutex);
 
@@ -101,25 +113,34 @@ void DPI::configure() {
     }
 }
 
-// DPI does not require an active runtime event stream.
+// Purpose: No event subscription is required for DPI.
+// Inputs: None.
+// Outputs: No-op.
+// Used by: feature lifecycle.
 void DPI::listen() {
 }
 
-// Update the active profile binding.
-// Each profile can carry different DPI values, so the config pointer changes here.
+// Purpose: Rebind the feature to a new profile's DPI config.
+// Inputs: Profile reference.
+// Outputs: Config binding updated.
+// Used by: profile switching.
 void DPI::setProfile(config::Profile& profile) {
     std::unique_lock lock(_config_mutex);
     _config = profile.dpi;
 }
 
-// Read the current DPI directly from the device.
-// This asks the hardware for its live value instead of trusting the profile cache.
+// Purpose: Read the current live DPI.
+// Inputs: Sensor index.
+// Outputs: Live DPI value from hardware.
+// Used by: IPC and fallback reads.
 uint16_t DPI::getDPI(uint8_t sensor) {
     return _adjustable_dpi->getSensorDPI(sensor);
 }
 
-// Clamp the requested DPI to a supported value and write it back to the device.
-// The user can type any value, but the hardware may only accept nearby ones.
+// Purpose: Clamp and write a requested DPI value.
+// Inputs: DPI value and sensor index.
+// Outputs: Hardware sensor DPI updated.
+// Used by: IPC `SetDPI` and action helpers.
 void DPI::setDPI(uint16_t dpi, uint8_t sensor) {
     if (dpi == 0)
         return;
@@ -129,8 +150,10 @@ void DPI::setDPI(uint16_t dpi, uint8_t sensor) {
     _adjustable_dpi->setSensorDPI(sensor, getClosestDPI(dpi_list, dpi));
 }
 
-// Ensure the cached DPI list exists up to the requested sensor index.
-// This avoids re-querying the device for the same sensor over and over.
+// Purpose: Ensure the cached DPI list exists up to one sensor.
+// Inputs: Sensor index.
+// Outputs: DPI list cache filled through that sensor.
+// Used by: configure and IPC reads.
 void DPI::_fillDPILists(uint8_t sensor) {
     bool needs_fill;
     {
@@ -154,10 +177,18 @@ DPI::IPC::IPC(DPI* parent) : ipcgull::interface(
         }, {}, {}), _parent(*parent) {
 }
 
+// Purpose: Return how many sensors are known.
+// Inputs: None.
+// Outputs: Sensor count.
+// Used by: IPC `GetSensors`.
 uint8_t DPI::IPC::getSensors() const {
     return _parent._dpi_lists.size();
 }
 
+// Purpose: Return the supported DPI list for one sensor.
+// Inputs: Sensor index.
+// Outputs: Supported values, step, and range flag.
+// Used by: IPC `GetDPIs`.
 std::tuple<std::vector<uint16_t>, uint16_t, bool> DPI::IPC::getDPIs(uint8_t sensor) const {
     _parent._fillDPILists(sensor);
     std::shared_lock lock(_parent._dpi_list_mutex);
@@ -165,6 +196,10 @@ std::tuple<std::vector<uint16_t>, uint16_t, bool> DPI::IPC::getDPIs(uint8_t sens
     return {dpi_list.dpis, dpi_list.dpiStep, dpi_list.isRange};
 }
 
+// Purpose: Return the configured DPI for one sensor.
+// Inputs: Sensor index.
+// Outputs: DPI value from config or hardware.
+// Used by: IPC `GetDPI`.
 uint16_t DPI::IPC::getDPI(uint8_t sensor) const {
     std::shared_lock lock(_parent._config_mutex);
     auto& config = _parent._config.get();
@@ -190,6 +225,10 @@ uint16_t DPI::IPC::getDPI(uint8_t sensor) const {
     }
 }
 
+// Purpose: Persist a new DPI value and apply it immediately.
+// Inputs: DPI value and sensor index.
+// Outputs: Config updated and hardware written.
+// Used by: IPC `SetDPI`.
 void DPI::IPC::setDPI(uint16_t dpi, uint8_t sensor) {
     std::unique_lock lock(_parent._config_mutex);
     auto& config = _parent._config.get();

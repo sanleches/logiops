@@ -16,6 +16,14 @@
  *
  */
 
+/*
+ * File: ToggleSmartShift.cpp
+ *
+ * Action that toggles the SmartShift hardware feature on press. The action
+ * resolves the feature once, then flips its active state asynchronously when
+ * triggered.
+ */
+
 #include <actions/ToggleSmartShift.h>
 #include <Device.h>
 #include <backend/hidpp20/features/ReprogControls.h>
@@ -25,10 +33,16 @@
 using namespace logid::actions;
 using namespace logid::backend;
 
-// IPC name used when this action is exported through D-Bus.
+// Purpose: Name the IPC interface for this action.
+// Inputs: None.
+// Outputs: Static interface name string.
+// Used by: action construction.
 const char* ToggleSmartShift::interface_name = "ToggleSmartShift";
 
-// Look up the SmartShift feature and remember whether the device supports it.
+// Purpose: Bind the action to the SmartShift feature if available.
+// Inputs: Device and parent IPC node.
+// Outputs: Action object ready to toggle the feature.
+// Used by: SmartShift toggle buttons.
 ToggleSmartShift::ToggleSmartShift(
         Device* dev,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
@@ -41,7 +55,10 @@ ToggleSmartShift::ToggleSmartShift(
                   _device->hidpp20().deviceIndex());
 }
 
-// Toggle the feature on a worker thread so the input callback stays fast.
+// Purpose: Toggle SmartShift on press.
+// Inputs: None.
+// Outputs: Deferred SmartShift state update.
+// Used by: button press handling.
 void ToggleSmartShift::press() {
     _pressed = true;
     if (_smartshift) {
@@ -56,12 +73,18 @@ void ToggleSmartShift::press() {
     }
 }
 
-// Release only clears the pressed marker.
+// Purpose: Clear the pressed marker.
+// Inputs: None.
+// Outputs: Button state no longer active.
+// Used by: button release handling.
 void ToggleSmartShift::release() {
     _pressed = false;
 }
 
-// Mark the button as temporarily diverted while this action is active.
+// Purpose: Mark the button as temporarily diverted.
+// Inputs: None.
+// Outputs: Reprog flag bits.
+// Used by: hardware remapping.
 uint8_t ToggleSmartShift::reprogFlags() const {
     return hidpp20::ReprogControls::TemporaryDiverted;
 }
