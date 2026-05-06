@@ -34,6 +34,8 @@ namespace logid::backend::raw {
 
     class IOMonitor;
 
+    // Thin wrapper that lets RawDevice be created through shared_ptr while keeping
+    // a private constructor. This keeps device lifetime tied to shared ownership.
     template <typename T>
     class RawDeviceWrapper : public T {
     public:
@@ -41,6 +43,8 @@ namespace logid::backend::raw {
         RawDeviceWrapper(Args... args) : T(std::forward<Args>(args)...) { }
     };
 
+    // Represents one opened hidraw device and its report/event plumbing.
+    // Higher layers use this as the lowest-level way to talk to a device.
     class RawDevice {
         template <typename>
         friend class RawDeviceWrapper;
@@ -61,6 +65,9 @@ namespace logid::backend::raw {
         };
 
         template <typename... Args>
+        // Factory that opens the raw device and starts its I/O monitoring.
+        // Construction is split out so the object can hand out a weak self pointer
+        // before background callbacks are registered.
         static std::shared_ptr<RawDevice> make(Args... args) {
             auto raw_dev = std::make_shared<RawDeviceWrapper<RawDevice>>(
                     std::forward<Args>(args)...);
@@ -90,8 +97,12 @@ namespace logid::backend::raw {
 
         [[nodiscard]] const std::vector<uint8_t>& reportDescriptor() const;
 
+        // Send one HID report to the device.
+        // The report is already encoded in HID raw bytes by the time it reaches here.
         void sendReport(const std::vector<uint8_t>& report);
 
+        // Register a callback that receives each report emitted by the device.
+        // Raw reports are forwarded to higher-level HID++ parsers through this hook.
         [[nodiscard]] EventHandlerLock<RawDevice> addEventHandler(RawEventHandler handler);
 
     private:

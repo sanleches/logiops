@@ -28,19 +28,28 @@
 #include <chrono>
 
 namespace logid::features {
+    // Feature wrapper for high-resolution scrolling and its actions.
+    // It turns one HID++ wheel feature into two optional user actions: one for
+    // scrolling up and one for scrolling down.
     class HiresScroll : public DeviceFeature {
     public:
+        // Apply the current hires-scroll settings to the device.
         void configure() final;
 
+        // Install the wheel event listener.
         void listen() final;
 
+        // Swap to another profile's hires-scroll config.
         void setProfile(config::Profile& profile) final;
 
+        // Return the current hardware mode bits.
         [[nodiscard]] uint8_t getMode();
 
+        // Write raw mode bits back to the device.
         void setMode(uint8_t mode);
 
     protected:
+        // Bind the wrapper to the active device and profile.
         explicit HiresScroll(Device* dev);
 
     private:
@@ -60,6 +69,7 @@ namespace logid::features {
 
         class IPC : public ipcgull::interface {
         public:
+            // Expose hires-scroll configuration over IPC.
             explicit IPC(HiresScroll* parent);
 
             [[nodiscard]] std::tuple<bool, bool, bool> getConfig() const;

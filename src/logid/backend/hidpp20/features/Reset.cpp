@@ -15,13 +15,30 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
+/*
+ * File: Reset.cpp
+ *
+ * HID++ 2.0 reset helper. This module reads the active profile and sends the
+ * reset-to-profile command used by the daemon when a device needs to reapply
+ * its firmware-side state.
+ */
+
 #include <backend/hidpp20/features/Reset.h>
 
 using namespace logid::backend::hidpp20;
 
+// Purpose: Bind the reset helper to the device.
+// Inputs: HID++ device.
+// Outputs: Reset wrapper.
+// Used by: device reset logic.
 Reset::Reset(Device* device) : Feature(device, ID) {
 }
 
+// Purpose: Read the active profile number.
+// Inputs: None.
+// Outputs: Active profile ID.
+// Used by: reset logic.
 uint16_t Reset::getProfile() {
     std::vector<uint8_t> params(0);
     auto results = callFunction(GetProfile, params);
@@ -31,6 +48,10 @@ uint16_t Reset::getProfile() {
     return profile;
 }
 
+// Purpose: Reset the device to the requested profile.
+// Inputs: Profile ID.
+// Outputs: Reset request sent to hardware.
+// Used by: `Device::reset()`.
 void Reset::reset(uint16_t profile) {
     std::vector<uint8_t> params(2);
     params[0] = (profile >> 8) & 0xff;

@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: HiresScroll.cpp
+ *
+ * High-resolution scroll feature wrapper. This module binds the profile's
+ * hi-res scroll settings to the device feature, translates scroll packets into
+ * directional gestures, and exposes the scroll controls over IPC.
+ */
+
 #include <features/HiresScroll.h>
 #include <actions/gesture/AxisGesture.h>
 #include <Device.h>
@@ -25,6 +33,10 @@ using namespace logid;
 using namespace logid::features;
 using namespace logid::backend;
 
+// Purpose: Bind the hi-res scroll backend to profile config and IPC.
+// Inputs: Device.
+// Outputs: Feature wrapper plus IPC node tree.
+// Used by: device feature setup.
 HiresScroll::HiresScroll(Device* dev) :
         DeviceFeature(dev),
         _config(dev->activeProfile().hiresscroll), _mode(0),
@@ -46,6 +58,10 @@ HiresScroll::HiresScroll(Device* dev) :
     _ipc_interface = dev->ipcNode()->make_interface<IPC>(this);
 }
 
+// Purpose: Build the mode mask and gesture objects from config.
+// Inputs: Current hi-res scroll config.
+// Outputs: Cached mode bits and gesture nodes.
+// Used by: constructor and profile changes.
 void HiresScroll::_makeConfig() {
     auto& config = _config.get();
     _mode = 0;
@@ -82,11 +98,19 @@ void HiresScroll::_makeConfig() {
     }
 }
 
+// Purpose: Reapply only the profile-requested mode bits.
+// Inputs: None.
+// Outputs: Hardware mode updated.
+// Used by: device reconfiguration.
 void HiresScroll::configure() {
     std::shared_lock lock(_config_mutex);
     _configure();
 }
 
+// Purpose: Merge requested mode bits without clobbering unsupported ones.
+// Inputs: None.
+// Outputs: Hardware mode updated with masked bits.
+// Used by: `configure()` and IPC setters.
 void HiresScroll::_configure() {
     auto mode = _hires_scroll->getMode();
     mode &= ~_mask;
@@ -94,6 +118,10 @@ void HiresScroll::_configure() {
     _hires_scroll->setMode(mode);
 }
 
+// Purpose: Register the wheel movement event handler once.
+// Inputs: None.
+// Outputs: Event handler attached or reused.
+// Used by: feature lifecycle.
 void HiresScroll::listen() {
     std::shared_lock lock(_config_mutex);
     if (_ev_handler.empty()) {
@@ -111,6 +139,10 @@ void HiresScroll::listen() {
     }
 }
 
+// Purpose: Swap in a new profile and rebuild the gestures.
+// Inputs: Profile reference.
+// Outputs: Config and gesture tree updated.
+// Used by: profile switching.
 void HiresScroll::setProfile(config::Profile& profile) {
     std::unique_lock lock(_config_mutex);
 
@@ -120,14 +152,26 @@ void HiresScroll::setProfile(config::Profile& profile) {
     _makeConfig();
 }
 
+// Purpose: Return the current hardware mode.
+// Inputs: None.
+// Outputs: Hardware mode bits.
+// Used by: IPC `GetConfig`.
 uint8_t HiresScroll::getMode() {
     return _hires_scroll->getMode();
 }
 
+// Purpose: Write a new hardware mode directly.
+// Inputs: Mode bits.
+// Outputs: Hardware mode updated.
+// Used by: IPC and internal reconfiguration.
 void HiresScroll::setMode(uint8_t mode) {
     _hires_scroll->setMode(mode);
 }
 
+// Purpose: Build one scroll-direction gesture and make it wheel-compatible.
+// Inputs: Gesture config and direction label.
+// Outputs: Directional gesture object or none.
+// Used by: `_makeConfig()`.
 void HiresScroll::_makeGesture(std::shared_ptr<actions::Gesture>& gesture,
                                std::optional<config::Gesture>& config,
                                const std::string& direction) {
@@ -141,6 +185,10 @@ void HiresScroll::_makeGesture(std::shared_ptr<actions::Gesture>& gesture,
     }
 }
 
+// Purpose: Tune axis gestures to the device's hi-res multiplier.
+// Inputs: Gesture object.
+// Outputs: Gesture adjusted for wheel scaling.
+// Used by: gesture setup.
 void HiresScroll::_fixGesture(const std::shared_ptr<actions::Gesture>& gesture) {
     try {
         auto axis = std::dynamic_pointer_cast<actions::AxisGesture>(gesture);
@@ -151,6 +199,10 @@ void HiresScroll::_fixGesture(const std::shared_ptr<actions::Gesture>& gesture) 
         gesture->press(true);
 }
 
+// Purpose: Turn wheel events into directional gesture presses and movement.
+// Inputs: One wheel status event.
+// Outputs: Gesture state transitions and movement callbacks.
+// Used by: wheel event handling.
 void HiresScroll::_handleScroll(hidpp20::HiresScroll::WheelStatus event) {
     std::shared_lock lock(_config_mutex);
     auto now = std::chrono::system_clock::now();
@@ -192,6 +244,10 @@ void HiresScroll::_handleScroll(hidpp20::HiresScroll::WheelStatus event) {
     _last_scroll = now;
 }
 
+// Purpose: Publish hi-res scroll controls through IPC.
+// Inputs: Parent feature object.
+// Outputs: Config methods and writable gesture nodes.
+// Used by: IPC clients.
 HiresScroll::IPC::IPC(HiresScroll* parent) : ipcgull::interface(
         SERVICE_ROOT_NAME ".HiresScroll", {
                 {"GetConfig", {this, &IPC::getConfig, {"hires", "invert", "target"}}},
@@ -203,6 +259,10 @@ HiresScroll::IPC::IPC(HiresScroll* parent) : ipcgull::interface(
         }, {}, {}), _parent(*parent) {
 }
 
+// Purpose: Return the hi-res, invert, and target flags.
+// Inputs: None.
+// Outputs: Current config flags.
+// Used by: IPC `GetConfig`.
 std::tuple<bool, bool, bool> HiresScroll::IPC::getConfig() const {
     std::shared_lock lock(_parent._config_mutex);
 
@@ -224,6 +284,10 @@ std::tuple<bool, bool, bool> HiresScroll::IPC::getConfig() const {
     }
 }
 
+// Purpose: Ensure the profile has a mutable hi-res scroll config object.
+// Inputs: None.
+// Outputs: Mutable config object reference.
+// Used by: IPC setters.
 config::HiresScroll& HiresScroll::IPC::_parentConfig() {
     auto& config = _parent._config.get();
     if (!config.has_value()) {
@@ -238,6 +302,10 @@ config::HiresScroll& HiresScroll::IPC::_parentConfig() {
     return std::get<config::HiresScroll>(config.value());
 }
 
+// Purpose: Update hi-res mode and apply it immediately.
+// Inputs: Desired state.
+// Outputs: Config and hardware updated.
+// Used by: IPC `SetHires`.
 void HiresScroll::IPC::setHires(bool hires) {
     std::unique_lock lock(_parent._config_mutex);
     _parentConfig().hires = hires;
@@ -251,6 +319,10 @@ void HiresScroll::IPC::setHires(bool hires) {
     _parent._configure();
 }
 
+// Purpose: Update inversion and apply it immediately.
+// Inputs: Desired state.
+// Outputs: Config and hardware updated.
+// Used by: IPC `SetInvert`.
 void HiresScroll::IPC::setInvert(bool invert) {
     std::unique_lock lock(_parent._config_mutex);
     _parentConfig().invert = invert;
@@ -264,6 +336,10 @@ void HiresScroll::IPC::setInvert(bool invert) {
     _parent._configure();
 }
 
+// Purpose: Update target mode and apply it immediately.
+// Inputs: Desired state.
+// Outputs: Config and hardware updated.
+// Used by: IPC `SetTarget`.
 void HiresScroll::IPC::setTarget(bool target) {
     std::unique_lock lock(_parent._config_mutex);
     _parentConfig().target = target;
@@ -277,6 +353,10 @@ void HiresScroll::IPC::setTarget(bool target) {
     _parent._configure();
 }
 
+// Purpose: Replace the upward scroll mapping.
+// Inputs: Gesture type name.
+// Outputs: Upward gesture updated or rejected.
+// Used by: IPC `SetUp`.
 void HiresScroll::IPC::setUp(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 
@@ -297,6 +377,10 @@ void HiresScroll::IPC::setUp(const std::string& type) {
     }
 }
 
+// Purpose: Replace the downward scroll mapping.
+// Inputs: Gesture type name.
+// Outputs: Downward gesture updated or rejected.
+// Used by: IPC `SetDown`.
 void HiresScroll::IPC::setDown(const std::string& type) {
     std::unique_lock lock(_parent._config_mutex);
 

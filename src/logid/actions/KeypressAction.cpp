@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: KeypressAction.cpp
+ *
+ * Action that synthesizes key presses on the daemon's virtual input device.
+ * This module converts config-defined key names or numeric codes into cached
+ * key codes, presses them on activation, and releases them when the action ends.
+ */
+
 #include <actions/KeypressAction.h>
 #include <Device.h>
 #include <InputDevice.h>
@@ -24,8 +32,16 @@
 using namespace logid::actions;
 using namespace logid::backend;
 
+// Purpose: Name the IPC interface for this action.
+// Inputs: None.
+// Outputs: Static interface name string.
+// Used by: action construction.
 const char* KeypressAction::interface_name = "Keypress";
 
+// Purpose: Bind the action to config and cache the target key codes.
+// Inputs: Device, action config, and parent IPC node.
+// Outputs: Ready-to-use action object with IPC methods.
+// References: virtual input conversion and config parsing.
 KeypressAction::KeypressAction(
         Device* device, config::KeypressAction& config,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
@@ -40,6 +56,10 @@ KeypressAction::KeypressAction(
     _setConfig();
 }
 
+// Purpose: Press all configured keys.
+// Inputs: None.
+// Outputs: Key-down events on the virtual input device.
+// Used by: button press handling.
 void KeypressAction::press() {
     std::shared_lock lock(_config_mutex);
     _pressed = true;
@@ -47,6 +67,10 @@ void KeypressAction::press() {
         _device->virtualInput()->pressKey(key);
 }
 
+// Purpose: Release all configured keys.
+// Inputs: None.
+// Outputs: Key-up events on the virtual input device.
+// Used by: button release handling.
 void KeypressAction::release() {
     std::shared_lock lock(_config_mutex);
     _pressed = false;
@@ -54,6 +78,10 @@ void KeypressAction::release() {
         _device->virtualInput()->releaseKey(key);
 }
 
+// Purpose: Convert config values into cached key codes.
+// Inputs: Current action config.
+// Outputs: Internal key list and registered virtual codes.
+// Used by: constructor and `setKeys()`.
 void KeypressAction::_setConfig() {
     _keys.clear();
 
@@ -62,6 +90,7 @@ void KeypressAction::_setConfig() {
 
     auto& config = _config.keys.value();
 
+    // A single string means one key name, so resolve it directly.
     if (std::holds_alternative<std::string>(config)) {
         const auto& key = std::get<std::string>(config);
         try {
@@ -71,10 +100,12 @@ void KeypressAction::_setConfig() {
         } catch (InputDevice::InvalidEventCode& e) {
             logPrintf(WARN, "Invalid keycode %s, skipping.", key.c_str());
         }
+    // A single integer means one numeric key code.
     } else if (std::holds_alternative<uint>(_config.keys.value())) {
         const auto& key = std::get<uint>(config);
         _device->virtualInput()->registerKey(key);
         _keys.emplace_back(key);
+    // A list allows mixed names and numeric codes.
     } else if (std::holds_alternative<
             std::list<std::variant<uint, std::string>>>(config)) {
         const auto& keys = std::get<
@@ -99,10 +130,18 @@ void KeypressAction::_setConfig() {
     }
 }
 
+// Purpose: Mark the button as temporarily diverted.
+// Inputs: None.
+// Outputs: HID++ reprog flag bits.
+// Used by: hardware remapping.
 uint8_t KeypressAction::reprogFlags() const {
     return hidpp20::ReprogControls::TemporaryDiverted;
 }
 
+// Purpose: Return the configured key names.
+// Inputs: None.
+// Outputs: A list of key names.
+// Used by: IPC `GetKeys`.
 std::vector<std::string> KeypressAction::getKeys() const {
     std::shared_lock lock(_config_mutex);
     std::vector<std::string> ret;
@@ -112,6 +151,10 @@ std::vector<std::string> KeypressAction::getKeys() const {
     return ret;
 }
 
+// Purpose: Replace the configured keys and rebuild cached codes.
+// Inputs: New key name list.
+// Outputs: Updated action config and virtual device registrations.
+// Used by: IPC `SetKeys`.
 void KeypressAction::setKeys(const std::vector<std::string>& keys) {
     std::unique_lock lock(_config_mutex);
     if (_pressed)

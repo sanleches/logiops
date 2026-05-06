@@ -22,10 +22,12 @@
 #include <features/SmartShift.h>
 
 namespace logid::actions {
+    // Action that toggles SmartShift on the device when pressed.
     class ToggleSmartShift : public Action {
     public:
         static const char* interface_name;
 
+        // Bind the action to the optional SmartShift feature.
         ToggleSmartShift(Device* dev,
                          const std::shared_ptr<ipcgull::node>& parent);
 
@@ -34,8 +36,10 @@ namespace logid::actions {
                          const std::shared_ptr<ipcgull::node>& parent) :
                 ToggleSmartShift(device, parent) {}
 
+        // Press flips the SmartShift state asynchronously.
         void press() final;
 
+        // Release only clears the pressed state marker.
         void release() final;
 
         [[nodiscard]] uint8_t reprogFlags() const final;

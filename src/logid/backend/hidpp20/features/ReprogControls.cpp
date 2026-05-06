@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: ReprogControls.cpp
+ *
+ * HID++ 2.0 reprogrammable-controls wrapper. This module discovers the control
+ * table, caches control metadata, and translates HID++ button/raw-XY diversion
+ * reports into the daemon's action mapping model.
+ */
+
 #include <backend/hidpp20/features/ReprogControls.h>
 #include <backend/hidpp20/Error.h>
 #include <backend/hidpp20/Device.h>
@@ -22,7 +30,10 @@
 
 using namespace logid::backend::hidpp20;
 
-// Define all the ReprogControls versions
+// Purpose: Define the versioned ReprogControls constructors.
+// Inputs: Device and optional feature ID.
+// Outputs: Version-specific wrappers.
+// Used by: `autoVersion()` selection.
 #define DEFINE_REPROG(T, Base) \
     T::T(Device* dev, uint16_t _id) : Base(dev, _id) { } \
     T::T(Device* dev) : T(dev, ID) { }
@@ -38,7 +49,11 @@ DEFINE_REPROG(ReprogControlsV3, ReprogControlsV2_2)
 DEFINE_REPROG(ReprogControlsV4, ReprogControlsV3)
 
 template<typename T>
-std::shared_ptr<T> make_reprog(Device* dev) {
+    // Purpose: Try to create a remapping backend version.
+    // Inputs: Device and desired wrapper type.
+    // Outputs: Wrapper instance or null.
+    // Used by: version selection.
+    std::shared_ptr<T> make_reprog(Device* dev) {
     try {
         return std::make_shared<T>(dev);
     } catch (UnsupportedFeature& e) {
@@ -46,6 +61,10 @@ std::shared_ptr<T> make_reprog(Device* dev) {
     }
 }
 
+// Purpose: Prefer the newest supported remapping implementation.
+// Inputs: HID++ device.
+// Outputs: The best supported remapping wrapper.
+// Used by: remap button setup.
 std::shared_ptr<ReprogControls> ReprogControls::autoVersion(Device* dev) {
     if (auto v4 = make_reprog<ReprogControlsV4>(dev)) {
         return v4;
@@ -60,12 +79,20 @@ std::shared_ptr<ReprogControls> ReprogControls::autoVersion(Device* dev) {
     return std::make_shared<ReprogControls>(dev);
 }
 
+// Purpose: Read how many remappable controls the device exposes.
+// Inputs: None.
+// Outputs: Control count.
+// Used by: control table initialization.
 uint8_t ReprogControls::getControlCount() {
     std::vector<uint8_t> params(0);
     auto response = callFunction(GetControlCount, params);
     return response[0];
 }
 
+// Purpose: Read metadata for one control entry.
+// Inputs: Control table index.
+// Outputs: Parsed control info.
+// Used by: control table initialization.
 ReprogControls::ControlInfo ReprogControls::getControlInfo(uint8_t index) {
     std::vector<uint8_t> params(1);
     ControlInfo info{};
@@ -84,6 +111,10 @@ ReprogControls::ControlInfo ReprogControls::getControlInfo(uint8_t index) {
     return info;
 }
 
+// Purpose: Populate the cached control-ID map on first use.
+// Inputs: None.
+// Outputs: Cached control metadata.
+// Used by: lookup helpers.
 void ReprogControls::initCidMap() {
     std::unique_lock<std::mutex> lock(_cids_populating);
     if (_cids_initialized)
@@ -96,11 +127,19 @@ void ReprogControls::initCidMap() {
     _cids_initialized = true;
 }
 
+// Purpose: Return the cached control table.
+// Inputs: None.
+// Outputs: Control metadata map.
+// Used by: button setup.
 const std::map<uint16_t, ReprogControls::ControlInfo>&
 ReprogControls::getControls() const {
     return _cids;
 }
 
+// Purpose: Look up control metadata by control ID.
+// Inputs: Control ID.
+// Outputs: Parsed control info or exception.
+// Used by: remap button logic.
 ReprogControls::ControlInfo ReprogControls::getControlIdInfo(uint16_t cid) {
     if (!_cids_initialized)
         initCidMap();
@@ -112,8 +151,12 @@ ReprogControls::ControlInfo ReprogControls::getControlIdInfo(uint16_t cid) {
         return it->second;
 }
 
+// Purpose: Read reporting flags through the emulated pre-V4 path.
+// Inputs: Control ID.
+// Outputs: Compatibility reporting info.
+// Used by: remap button setup.
 [[maybe_unused]] ReprogControls::ControlInfo ReprogControls::getControlReporting(uint16_t cid) {
-    // Emulate this function, only Reprog controls v4 supports this
+    // Emulate this function, only Reprog controls v4 supports this.
     auto info = getControlIdInfo(cid);
 
     ControlInfo report{};
@@ -129,12 +172,20 @@ ReprogControls::ControlInfo ReprogControls::getControlIdInfo(uint16_t cid) {
     return report;
 }
 
+// Purpose: Ignore reporting writes on pre-V4 firmware.
+// Inputs: Control ID and reporting info.
+// Outputs: No-op.
+// Used by: compatibility implementation.
 void ReprogControls::setControlReporting(uint16_t cid, ControlInfo info) {
     // This function does not exist pre-v4 and cannot be emulated, ignore.
     (void) cid;
     (void) info; // Suppress unused warnings
 }
 
+// Purpose: Decode the list of diverted button control IDs.
+// Inputs: One HID++ report.
+// Outputs: Set of diverted control IDs.
+// Used by: remap button event handling.
 std::set<uint16_t> ReprogControls::divertedButtonEvent(
         const hidpp::Report& report) {
     assert(report.function() == DivertedButtonEvent);
@@ -151,6 +202,10 @@ std::set<uint16_t> ReprogControls::divertedButtonEvent(
     return buttons;
 }
 
+// Purpose: Decode the diverted raw-XY event payload.
+// Inputs: One HID++ report.
+// Outputs: Raw XY movement delta.
+// Used by: remap button event handling.
 ReprogControls::Move ReprogControls::divertedRawXYEvent(const hidpp::Report
                                                         & report) {
     assert(report.function() == DivertedRawXYEvent);
@@ -160,6 +215,10 @@ ReprogControls::Move ReprogControls::divertedRawXYEvent(const hidpp::Report
     return move;
 }
 
+// Purpose: Read reporting flags on V4 firmware.
+// Inputs: Control ID.
+// Outputs: Live reporting info.
+// Used by: remap button setup.
 ReprogControls::ControlInfo ReprogControlsV4::getControlReporting(uint16_t cid) {
     std::vector<uint8_t> params(2);
     ControlInfo info{};
@@ -173,6 +232,10 @@ ReprogControls::ControlInfo ReprogControlsV4::getControlReporting(uint16_t cid) 
     return info;
 }
 
+// Purpose: Write reporting flags on V4 firmware.
+// Inputs: Control ID and reporting info.
+// Outputs: Hardware reporting state updated.
+// Used by: remap button setup.
 void ReprogControlsV4::setControlReporting(uint16_t cid, ControlInfo info) {
     std::vector<uint8_t> params(5);
     params[0] = (cid >> 8) & 0xff;

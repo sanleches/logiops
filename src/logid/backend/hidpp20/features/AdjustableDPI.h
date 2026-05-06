@@ -22,6 +22,7 @@
 #include <backend/hidpp20/feature_defs.h>
 
 namespace logid::backend::hidpp20 {
+    // HID++ feature that reads and writes per-sensor DPI settings.
     class AdjustableDPI : public Feature {
     public:
         static const uint16_t ID = FeatureID::ADJUSTABLE_DPI;
@@ -35,8 +36,10 @@ namespace logid::backend::hidpp20 {
             SetSensorDPI = 3
         };
 
+        // Bind the DPI feature to a device.
         explicit AdjustableDPI(Device* dev);
 
+        // Return how many sensors expose DPI settings.
         uint8_t getSensorCount();
 
         struct SensorDPIList {
@@ -45,12 +48,16 @@ namespace logid::backend::hidpp20 {
             uint16_t dpiStep;
         };
 
+        // Read the supported DPI values for one sensor.
         SensorDPIList getSensorDPIList(uint8_t sensor);
 
+        // Read the default DPI for one sensor.
         uint16_t getDefaultSensorDPI(uint8_t sensor);
 
+        // Read the currently active DPI for one sensor.
         uint16_t getSensorDPI(uint8_t sensor);
 
+        // Write a new DPI value for one sensor.
         void setSensorDPI(uint8_t sensor, uint16_t dpi);
     };
 }

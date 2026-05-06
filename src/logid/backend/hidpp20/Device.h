@@ -26,12 +26,19 @@
 #include <backend/hidpp/Device.h>
 
 namespace logid::backend::hidpp20 {
+    // HID++ 2.0 device wrapper that multiplexes feature calls and responses.
+    // HID++ 2.0 has feature-specific sub-IDs, so this class has to match replies
+    // back to the feature call that sent them.
     class Device : public hidpp::Device {
     public:
+        // Call a feature function and wait for the response.
+        // The feature index identifies which HID++ 2.0 feature should receive the call.
         std::vector<uint8_t> callFunction(uint8_t feature_index,
                                           uint8_t function,
                                           std::vector<uint8_t>& params);
 
+        // Call a feature function without waiting for the response.
+        // Used when the firmware may disconnect or otherwise never answer.
         void callFunctionNoResponse(uint8_t feature_index,
                                     uint8_t function,
                                     std::vector<uint8_t>& params);
@@ -63,7 +70,9 @@ namespace logid::backend::hidpp20 {
             void reset();
         };
 
-        /* Multiplex responses on lower nibble of SubID, ignore upper nibble for space */
+        // Multiplex responses on the lower nibble of SubID.
+        // Multiple feature requests can be in flight at once as long as each one
+        // lands in a different response slot.
         std::array<ResponseSlot, 16> _responses;
 
     public:

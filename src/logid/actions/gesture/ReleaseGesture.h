@@ -21,17 +21,22 @@
 #include <actions/gesture/Gesture.h>
 
 namespace logid::actions {
+    // Gesture that triggers its action only when the input is released.
     class ReleaseGesture : public Gesture {
     public:
         static const char* interface_name;
 
+        // Bind the gesture to the release-action config.
         ReleaseGesture(Device* device, config::ReleaseGesture& config,
                        const std::shared_ptr<ipcgull::node>& parent);
 
+        // Start collecting movement and initialize the threshold.
         void press(bool init_threshold) final;
 
+        // Fire the action on release if the threshold was reached.
         void release(bool primary) final;
 
+        // Track how much movement has accumulated.
         void move(int16_t axis) final;
 
         [[nodiscard]] bool wheelCompatibility() const final;

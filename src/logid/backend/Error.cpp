@@ -16,14 +16,28 @@
  *
  */
 
+/*
+ * File: Error.cpp
+ *
+ * Common backend error strings for daemon-facing exceptions.
+ */
+
 #include <backend/Error.h>
 
 using namespace logid::backend;
 
+// Purpose: Return the retry-later backend error message.
+// Inputs: None.
+// Outputs: Static error string.
+// Used by: exception reporting.
 const char* DeviceNotReady::what() const noexcept {
     return "device not ready";
 }
 
+// Purpose: Return the backend timeout error message.
+// Inputs: None.
+// Outputs: Static error string.
+// Used by: exception reporting.
 const char* TimeoutError::what() const noexcept {
     return "Device timed out";
 }

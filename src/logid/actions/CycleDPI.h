@@ -22,19 +22,24 @@
 #include <features/DPI.h>
 
 namespace logid::actions {
+    // Action that steps through a list of DPI presets each time it is pressed.
     class CycleDPI : public Action {
     public:
         static const char* interface_name;
 
+        // Bind the action to the DPI feature and the mutable cycle list.
         CycleDPI(Device* device, config::CycleDPI& setting,
                  const std::shared_ptr<ipcgull::node>& parent);
 
+        // Press advances the active DPI to the next configured value.
         void press() final;
 
         void release() final;
 
+        // Expose the configured DPI list to IPC clients.
         [[nodiscard]] std::vector<int> getDPIs() const;
 
+        // Replace the configured DPI list and reset the current position.
         void setDPIs(const std::vector<int>& dpis);
 
         [[nodiscard]] uint8_t reprogFlags() const final;

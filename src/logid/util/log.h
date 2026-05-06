@@ -21,7 +21,8 @@
 #include <string>
 
 namespace logid {
-    /// TODO: Replace with a safer object-oriented logger
+    // Minimal logging helper used by daemon startup and device/backend code.
+    // TODO: Replace with a safer object-oriented logger.
 
     enum LogLevel {
         RAWREPORT,
@@ -31,6 +32,7 @@ namespace logid {
         ERROR
     };
 
+    // Global log filter controlled by CLI flags.
     extern LogLevel global_loglevel;
 
     void logPrintf(LogLevel level, const char* format, ...);

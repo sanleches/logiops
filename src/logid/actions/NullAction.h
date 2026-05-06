@@ -21,6 +21,7 @@
 #include <actions/Action.h>
 
 namespace logid::actions {
+    // No-op action used as the default/unassigned action.
     class NullAction : public Action {
     public:
         static const char* interface_name;

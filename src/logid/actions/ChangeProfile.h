@@ -21,21 +21,27 @@
 #include <actions/Action.h>
 
 namespace logid::actions {
+    // Action that switches the active device profile when released.
     class ChangeProfile : public Action {
     public:
         static const char* interface_name;
 
+        // Bind the action to the target device profile config.
         ChangeProfile(Device* device, config::ChangeProfile& setting,
                       const std::shared_ptr<ipcgull::node>& parent);
 
+        // Press is intentionally a no-op.
         void press() final;
 
+        // Release schedules the profile switch.
         void release() final;
 
         [[nodiscard]] uint8_t reprogFlags() const final;
 
+        // Read the configured profile name.
         std::string getProfile();
 
+        // Update the target profile name.
         void setProfile(std::string profile);
 
     private:

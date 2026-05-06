@@ -26,6 +26,8 @@
 namespace logid::backend::hidpp20 {
     class Device;
 
+    // Thrown when the device does not support a requested HID++ 2.0 feature.
+    // This is how feature wrappers say "the hardware doesn't have that capability".
     class UnsupportedFeature : public std::exception {
     public:
         explicit UnsupportedFeature(uint16_t ID) : _f_id(ID) {}
@@ -38,12 +40,18 @@ namespace logid::backend::hidpp20 {
         uint16_t _f_id;
     };
 
+    // Base class for HID++ 2.0 features bound to a device instance.
+    // A concrete feature resolves its runtime index from the ROOT feature once,
+    // then uses that index for all future calls.
     class Feature {
     public:
         static const uint16_t ID;
 
+        // Return the feature's compile-time ID.
+        // This is the stable feature ID from the Logitech HID++ tables.
         virtual uint16_t getID() = 0;
 
+        // Return the runtime feature index used in actual HID++ requests.
         [[nodiscard]] uint8_t featureIndex() const;
 
         virtual ~Feature() = default;
@@ -51,8 +59,12 @@ namespace logid::backend::hidpp20 {
     protected:
         explicit Feature(Device* dev, uint16_t _id);
 
+        // Call the feature function and wait for a response.
+        // This delegates to the parent device so response matching stays centralized.
         std::vector<uint8_t> callFunction(uint8_t function_id, std::vector<uint8_t>& params);
 
+        // Call the feature function without waiting for a response.
+        // Use this when the device is expected to drop the link or not acknowledge.
         void callFunctionNoResponse(uint8_t function_id, std::vector<uint8_t>& params);
 
         Device* const _device;

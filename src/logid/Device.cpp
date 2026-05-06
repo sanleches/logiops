@@ -16,6 +16,16 @@
  *
  */
 
+/*
+ * File: Device.cpp
+ *
+ * High-level representation of a single Logitech device. This class bridges
+ * the HID++ transport layer, the per-device profile/configuration state, the
+ * feature wrappers that apply settings, and the IPC surface exposed to client
+ * applications. It is the main object that turns daemon configuration into
+ * device-specific behavior.
+ */
+
 #include <Device.h>
 #include <DeviceManager.h>
 #include <features/SmartShift.h>
@@ -34,6 +44,10 @@
 using namespace logid;
 using namespace logid::backend;
 
+// Purpose: Provide a stable short name for one device IPC node.
+// Inputs: The owning `DeviceManager`.
+// Outputs: A unique integer nickname that is converted to a string.
+// Used by: `Device::make()` and the device IPC path builder.
 DeviceNickname::DeviceNickname(const std::shared_ptr<DeviceManager>& manager) :
         _nickname(manager->newDeviceNickname()), _manager(manager) {
 }
@@ -57,6 +71,10 @@ namespace logid {
     };
 }
 
+// Purpose: Build a direct-device wrapper from a hidraw path.
+// Inputs: Raw device path, HID++ index, and owning `DeviceManager`.
+// Outputs: A fully wired `Device` with IPC registration and self-ownership.
+// Used by: `DeviceManager::addDevice()`.
 std::shared_ptr<Device> Device::make(
         std::string path, backend::hidpp::DeviceIndex index,
         std::shared_ptr<DeviceManager> manager) {
@@ -69,6 +87,10 @@ std::shared_ptr<Device> Device::make(
     return ret;
 }
 
+// Purpose: Build a device wrapper from an existing raw device.
+// Inputs: Open `RawDevice`, HID++ index, and owning `DeviceManager`.
+// Outputs: A fully wired `Device` with IPC registration and self-ownership.
+// Used by: code paths that already probed the raw node.
 std::shared_ptr<Device> Device::make(
         std::shared_ptr<backend::raw::RawDevice> raw_device,
         backend::hidpp::DeviceIndex index,
@@ -82,6 +104,10 @@ std::shared_ptr<Device> Device::make(
     return ret;
 }
 
+// Purpose: Build a receiver-backed device wrapper.
+// Inputs: `Receiver`, slot index, and owning `DeviceManager`.
+// Outputs: A fully wired `Device` that uses the receiver's raw transport.
+// Used by: `Receiver::addDevice()`.
 std::shared_ptr<Device> Device::make(
         Receiver* receiver, backend::hidpp::DeviceIndex index,
         std::shared_ptr<DeviceManager> manager) {
@@ -137,18 +163,29 @@ Device::Device(Receiver* receiver, hidpp::DeviceIndex index,
     _init();
 }
 
+// Purpose: Load per-device state, instantiate features, and apply the initial
+// profile.
+// Inputs: None beyond the object state built by the constructor.
+// Outputs: A ready-to-use device with features configured and IPC state set.
+// References: `features::*`, `reset()`, and `configure()/listen()`.
 void Device::_init() {
     logPrintf(INFO, "Device found: %s on %s:%d", name().c_str(),
               hidpp20().devicePath().c_str(), _index);
 
     {
         std::unique_lock lock(_profile_mutex);
+        // Start on the configured default profile, creating it if needed. The
+        // device always needs one active profile before features can be built
+        // because feature configuration reads from that profile snapshot.
         _profile = _config.profiles.find(_config.default_profile);
         if (_profile == _config.profiles.end())
             _profile = _config.profiles.insert({_config.default_profile, {}}).first;
         _profile_name = _config.default_profile;
     }
 
+// Optional features are attached opportunistically; unsupported ones are
+// skipped. This keeps the runtime feature set aligned with the actual
+// hardware rather than with model-specific assumptions.
     _addFeature<features::DPI>("dpi");
     _addFeature<features::SmartShift>("smartshift");
     _addFeature<features::HiresScroll>("hiresscroll");
@@ -165,14 +202,26 @@ void Device::_init() {
     }
 }
 
+// Purpose: Return the device's human-readable name.
+// Inputs: None.
+// Outputs: Name reported by the HID++ layer.
+// Used by: IPC metadata and logging.
 std::string Device::name() {
     return _hidpp20->name();
 }
 
+// Purpose: Return the device product ID.
+// Inputs: None.
+// Outputs: HID product ID.
+// Used by: IPC metadata and filtering.
 uint16_t Device::pid() {
     return _hidpp20->pid();
 }
 
+// Purpose: Mark the device asleep and notify IPC listeners.
+// Inputs: None.
+// Outputs: `_awake` becomes false when the state changes.
+// Used by: receiver power-state handling.
 void Device::sleep() {
     std::lock_guard<std::mutex> lock(_state_lock);
     if (_awake) {
@@ -182,6 +231,10 @@ void Device::sleep() {
     }
 }
 
+// Purpose: Reapply the active profile after the device wakes up.
+// Inputs: None.
+// Outputs: A reset device with feature state reapplied and awake status updated.
+// Used by: `Receiver::addDevice()` and power-state transitions.
 void Device::wakeup() {
     std::lock_guard<std::mutex> lock(_state_lock);
 
@@ -195,6 +248,10 @@ void Device::wakeup() {
     logPrintf(INFO, "%s:%d woke up.", _path.c_str(), _index);
 }
 
+// Purpose: Re-run the full device configuration pass.
+// Inputs: None.
+// Outputs: Hardware reset plus feature reconfiguration.
+// Used by: `wakeup()`, `setProfile()`, and `clearProfile()`.
 void Device::reconfigure() {
     reset();
 
@@ -202,6 +259,10 @@ void Device::reconfigure() {
         feature.second->configure();
 }
 
+// Purpose: Trigger the device reset feature when available.
+// Inputs: None.
+// Outputs: A hardware reset request, or a debug log when unsupported.
+// Used by: `reconfigure()`.
 void Device::reset() {
     if (_reset_mechanism)
         (*_reset_mechanism)();
@@ -210,6 +271,10 @@ void Device::reset() {
                          "available.", _path.c_str(), _index);
 }
 
+// Purpose: Return the shared virtual input device.
+// Inputs: None.
+// Outputs: The daemon's synthetic input target.
+// Used by: feature action code.
 std::shared_ptr<InputDevice> Device::virtualInput() const {
     if (auto manager = _manager.lock()) {
         return manager->virtualInput();
@@ -222,10 +287,18 @@ std::shared_ptr<InputDevice> Device::virtualInput() const {
     }
 }
 
+// Purpose: Return the device's IPC node.
+// Inputs: None.
+// Outputs: The exported node object.
+// Used by: callers that need to attach child interfaces.
 std::shared_ptr<ipcgull::node> Device::ipcNode() const {
     return _ipc_node;
 }
 
+// Purpose: List all configured profile names.
+// Inputs: None.
+// Outputs: A stable snapshot of profile names.
+// Used by: Device IPC clients.
 std::vector<std::string> Device::getProfiles() const {
     std::shared_lock lock(_profile_mutex);
 
@@ -237,6 +310,10 @@ std::vector<std::string> Device::getProfiles() const {
     return ret;
 }
 
+// Purpose: Change the active profile and rebind feature config.
+// Inputs: The target profile name.
+// Outputs: A new active profile plus an immediate reconfiguration.
+// Used by: IPC `SetProfile`.
 void Device::setProfile(const std::string& profile) {
     std::unique_lock lock(_profile_mutex);
 
@@ -251,6 +328,10 @@ void Device::setProfile(const std::string& profile) {
     reconfigure();
 }
 
+// Purpose: Schedule a profile switch on the worker queue.
+// Inputs: Target profile name.
+// Outputs: A deferred task that switches profile later.
+// Used by: action code that should not block input handling.
 void Device::setProfileDelayed(const std::string& profile) {
     run_task([self_weak = _self, profile](){
         if (auto self = self_weak.lock())
@@ -258,6 +339,10 @@ void Device::setProfileDelayed(const std::string& profile) {
     });
 }
 
+// Purpose: Remove a stored profile when it is safe to do so.
+// Inputs: Profile name to remove.
+// Outputs: Profile erased or `invalid_argument` if the request is unsafe.
+// Used by: IPC `RemoveProfile`.
 void Device::removeProfile(const std::string& profile) {
     std::unique_lock lock(_profile_mutex);
 
@@ -269,6 +354,10 @@ void Device::removeProfile(const std::string& profile) {
     _config.profiles.erase(profile);
 }
 
+// Purpose: Reset a profile to defaults without deleting the entry.
+// Inputs: Profile name to clear.
+// Outputs: An empty profile record or `invalid_argument` for unknown names.
+// Used by: IPC `ClearProfile`.
 void Device::clearProfile(const std::string& profile) {
     std::unique_lock lock(_profile_mutex);
 
@@ -289,15 +378,27 @@ void Device::clearProfile(const std::string& profile) {
     }
 }
 
+// Purpose: Return the currently active profile.
+// Inputs: None.
+// Outputs: Mutable profile reference under lock.
+// Used by: feature configuration.
 config::Profile& Device::activeProfile() {
     std::shared_lock lock(_profile_mutex);
     return _profile->second;
 }
 
+// Purpose: Return the underlying HID++ 2.0 device wrapper.
+// Inputs: None.
+// Outputs: Reference to the transport object.
+// Used by: feature wrappers and IPC helpers.
 hidpp20::Device& Device::hidpp20() {
     return *_hidpp20;
 }
 
+// Purpose: Cache a callable reset path if the hardware exposes the feature.
+// Inputs: None beyond the device's HID++ feature map.
+// Outputs: A reset lambda or no reset mechanism.
+// Used by: `reset()`.
 void Device::_makeResetMechanism() {
     try {
         hidpp20::Reset reset(_hidpp20.get());
@@ -333,10 +434,18 @@ Device::IPC::IPC(Device* device) :
                 }), _device(*device) {
 }
 
+// Purpose: Emit the current awake/asleep state to IPC clients.
+// Inputs: None.
+// Outputs: `StatusChanged(active)` on the device IPC interface.
+// Used by: `sleep()` and `wakeup()`.
 void Device::IPC::notifyStatus() const {
     emit_signal("StatusChanged", (bool) (_device._awake));
 }
 
+// Purpose: Normalize device config storage for runtime use.
+// Inputs: Manager config and the device name.
+// Outputs: A concrete `config::Device` entry with at least one profile.
+// References: legacy single-profile configs and the current multi-profile form.
 config::Device& Device::_getConfig(
         const std::shared_ptr<DeviceManager>& manager,
         const std::string& name) {

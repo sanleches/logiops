@@ -21,17 +21,22 @@
 #include <actions/gesture/Gesture.h>
 
 namespace logid::actions {
+    // Gesture that repeatedly fires an action each time movement crosses an interval.
     class IntervalGesture : public Gesture {
     public:
         static const char* interface_name;
 
+        // Bind the gesture to the interval-action config.
         IntervalGesture(Device* device, config::IntervalGesture& config,
                         const std::shared_ptr<ipcgull::node>& parent);
 
+        // Reset counters and initialize the threshold.
         void press(bool init_threshold) final;
 
+        // Release does nothing for interval gestures.
         void release(bool primary) final;
 
+        // Check whether another interval boundary has been crossed.
         void move(int16_t axis) final;
 
         [[nodiscard]] bool wheelCompatibility() const final;

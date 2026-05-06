@@ -23,6 +23,7 @@
 #include <map>
 
 namespace logid::backend::hidpp20 {
+    // Helper for enumerating the HID++ feature table on a device.
     class FeatureSet : public Feature {
     public:
         static const uint16_t ID = FeatureID::FEATURE_SET;
@@ -35,12 +36,16 @@ namespace logid::backend::hidpp20 {
         };
 
         [[maybe_unused]] [[maybe_unused]]
+        // Bind the feature table reader to a device.
         explicit FeatureSet(Device* device);
 
+        // Return the number of feature entries exposed by the device.
         [[nodiscard]] uint8_t getFeatureCount();
 
+        // Read one feature ID by index.
         [[nodiscard]] uint16_t getFeature(uint8_t feature_index);
 
+        // Read the full feature table into a map.
         [[maybe_unused]]
         [[nodiscard]] std::map<uint8_t, uint16_t> getFeatures();
     };

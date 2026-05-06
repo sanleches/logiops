@@ -16,6 +16,15 @@
  *
  */
 
+/*
+ * File: Receiver.cpp
+ *
+ * Wireless receiver wrapper for logid. This class manages HID++ 1.0 receiver
+ * state, translates pairing and connection events into logical child devices,
+ * and exposes receiver-specific IPC used by clients to inspect pairing slots,
+ * start pairing, and disconnect devices.
+ */
+
 #include <Receiver.h>
 #include <DeviceManager.h>
 #include <backend/Error.h>
@@ -25,6 +34,10 @@
 using namespace logid;
 using namespace logid::backend;
 
+// Purpose: Provide a stable short name for one receiver IPC node.
+// Inputs: The owning `DeviceManager`.
+// Outputs: A unique integer nickname that is converted to a string.
+// Used by: `Receiver::make()` and the receiver IPC path builder.
 ReceiverNickname::ReceiverNickname(
         const std::shared_ptr<DeviceManager>& manager) :
         _nickname(manager->newReceiverNickname()), _manager(manager) {
@@ -41,6 +54,10 @@ ReceiverNickname::~ReceiverNickname() {
     }
 }
 
+// Purpose: Build a receiver wrapper and attach it to the IPC tree.
+// Inputs: Hidraw path and owning `DeviceManager`.
+// Outputs: A live `Receiver` object.
+// Used by: `DeviceManager::addDevice()`.
 std::shared_ptr<Receiver> Receiver::make(
         const std::string& path,
         const std::shared_ptr<DeviceManager>& manager) {
@@ -50,6 +67,10 @@ std::shared_ptr<Receiver> Receiver::make(
 }
 
 
+// Purpose: Open the HID++ 1.0 receiver and publish its IPC surface.
+// Inputs: Hidraw path and owning `DeviceManager`.
+// Outputs: A receiver monitor plus receiver-specific IPC state.
+// References: `hidpp10::ReceiverMonitor` and `Receiver::IPC`.
 Receiver::Receiver(const std::string& path,
                    const std::shared_ptr<DeviceManager>& manager) :
         hidpp10::ReceiverMonitor(path, manager,
@@ -65,12 +86,17 @@ const Receiver::DeviceList& Receiver::devices() const {
 }
 
 Receiver::~Receiver() noexcept {
+    // Detach child devices so the manager stops exposing stale IPC objects.
     if (auto manager = _manager.lock()) {
         for (auto& d: _devices)
             manager->removeExternalDevice(d.second);
     }
 }
 
+// Purpose: Turn receiver connection events into logical child devices.
+// Inputs: One connection event from the receiver firmware.
+// Outputs: A new child device, a wake/sleep transition, or a retry wait.
+// Used by: `hidpp10::ReceiverMonitor` callbacks.
 void Receiver::addDevice(hidpp::DeviceConnectionEvent event) {
     std::unique_lock<std::mutex> lock(_devices_change);
 
@@ -82,7 +108,9 @@ void Receiver::addDevice(hidpp::DeviceConnectionEvent event) {
     }
 
     try {
-        // Check if device is ignored before continuing
+        // Check if the device should be ignored before initializing it. This
+        // avoids spending time on devices the config explicitly disables and
+        // prevents unwanted child nodes from being exported.
         if (manager->config()->ignore.value_or(std::set<uint16_t>()).contains(event.pid)) {
             logPrintf(DEBUG, "%s:%d: Device 0x%04x ignored.",
                       _path.c_str(), event.index, event.pid);
@@ -106,6 +134,9 @@ void Receiver::addDevice(hidpp::DeviceConnectionEvent event) {
 
         auto version = hidpp_device->version();
 
+        // Receiver-linked HID++ 1.0 devices are not supported here. logiops
+        // focuses on HID++ 2.0 devices because they expose the feature surface
+        // needed for the daemon's remapping and configuration logic.
         if (std::get<0>(version) < 2) {
             logPrintf(INFO, "Unsupported HID++ 1.0 device on %s:%d connected.",
                       _path.c_str(), event.index);
@@ -133,6 +164,10 @@ void Receiver::addDevice(hidpp::DeviceConnectionEvent event) {
     }
 }
 
+// Purpose: Remove a receiver-backed child from the manager and receiver views.
+// Inputs: Slot index to remove.
+// Outputs: The child disappears from IPC exposure.
+// Used by: `hidpp10::ReceiverMonitor` callbacks.
 void Receiver::removeDevice(hidpp::DeviceIndex index) {
     std::unique_lock<std::mutex> lock(_devices_change);
     std::unique_lock<std::mutex> manager_lock;
@@ -146,6 +181,10 @@ void Receiver::removeDevice(hidpp::DeviceIndex index) {
     }
 }
 
+// Purpose: Publish pairing metadata for UI flow.
+// Inputs: Discovery event and passkey text.
+// Outputs: `PairReady` on the receiver IPC interface.
+// Used by: pairing discovery callbacks.
 void Receiver::pairReady(const hidpp10::DeviceDiscoveryEvent& event,
                          const std::string& passkey) {
     std::string type;
@@ -175,14 +214,26 @@ void Receiver::pairReady(const hidpp10::DeviceDiscoveryEvent& event,
     _ipc_interface->emit_signal("PairReady", event.name, event.pid, type, passkey);
 }
 
+// Purpose: Return the receiver's hidraw path.
+// Inputs: None.
+// Outputs: The stored kernel path.
+// Used by: `Device` construction and debugging.
 const std::string& Receiver::path() const {
     return _path;
 }
 
+// Purpose: Expose the underlying HID++ receiver wrapper.
+// Inputs: None.
+// Outputs: The shared receiver object used by child devices.
+// Used by: `Device::Device(Receiver*, ...)`.
 std::shared_ptr<hidpp10::Receiver> Receiver::rawReceiver() {
     return receiver();
 }
 
+// Purpose: List paired wireless slots.
+// Inputs: None.
+// Outputs: Slot number, pid, name, and serial for each paired device.
+// Used by: IPC `GetPaired`.
 std::vector<std::tuple<int, uint16_t, std::string, uint32_t>> Receiver::pairedDevices() const {
     std::vector<std::tuple<int, uint16_t, std::string, uint32_t>> ret;
     for (int i = hidpp::WirelessDevice1; i <= hidpp::WirelessDevice6; ++i) {
@@ -200,14 +251,26 @@ std::vector<std::tuple<int, uint16_t, std::string, uint32_t>> Receiver::pairedDe
     return ret;
 }
 
+// Purpose: Start pairing through the underlying receiver.
+// Inputs: Pairing timeout.
+// Outputs: A HID++ pairing request.
+// Used by: IPC `StartPair`.
 void Receiver::startPair(uint8_t timeout) {
     _startPair(timeout);
 }
 
+// Purpose: Stop an active pairing flow.
+// Inputs: None.
+// Outputs: A receiver pairing stop request.
+// Used by: IPC `StopPair`.
 void Receiver::stopPair() {
     _stopPair();
 }
 
+// Purpose: Disconnect a paired device slot.
+// Inputs: Receiver slot number.
+// Outputs: A receiver disconnect request.
+// Used by: IPC `Unpair`.
 void Receiver::unpair(int device) {
     receiver()->disconnect(static_cast<hidpp::DeviceIndex>(device));
 }

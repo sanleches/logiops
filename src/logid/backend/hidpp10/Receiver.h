@@ -49,6 +49,7 @@ namespace logid::backend::hidpp {
 
 namespace logid::backend::hidpp10 {
 
+    // HID++ 1.0 and receiver-specific pairing metadata extracted from reports.
     struct DeviceDiscoveryEvent {
         hidpp::DeviceType deviceType = hidpp::DeviceUnknown;
         uint8_t seq_num{};
@@ -82,11 +83,13 @@ namespace logid::backend::hidpp10 {
         uint8_t error{}; // don't know the error codes
     };
 
+    // Raised when a hidraw node does not behave like a receiver.
     class InvalidReceiver : public std::exception {
     public:
         [[nodiscard]] const char* what() const noexcept override;
     };
 
+    // HID++ 1.0 receiver wrapper used for pairing, discovery, and slot management.
     class Receiver : public Device {
     public:
 
@@ -122,30 +125,40 @@ namespace logid::backend::hidpp10 {
             bool receiverSoftwarePresent;
         };
 
+        // Read and update the receiver notification bitmask.
         NotificationFlags getNotificationFlags();
 
         void setNotifications(NotificationFlags flags);
 
+        // Trigger enumeration of currently connected wireless devices.
         void enumerate();
 
         uint8_t getConnectionState(hidpp::DeviceIndex index);
 
+        // Start a standard pairing flow.
         void startPairing(uint8_t timeout = 0);
 
+        // Start a Bolt pairing flow using discovery metadata.
         void startBoltPairing(const DeviceDiscoveryEvent& discovery);
 
+        // Stop any active pairing flow.
         void stopPairing();
 
+        // Start a Bolt discovery flow.
         void startDiscover(uint8_t timeout = 0);
 
+        // Stop a Bolt discovery flow.
         void stopDiscover();
 
+        // Disconnect a paired device slot.
         void disconnect(hidpp::DeviceIndex index);
 
+        // Query device activity counters for the wireless slots.
         std::map<hidpp::DeviceIndex, uint8_t> getDeviceActivity();
 
         [[nodiscard]] bool bolt() const;
 
+        // Static pairing information for one slot.
         struct PairingInfo {
             uint8_t destinationId;
             uint8_t reportInterval;
@@ -169,6 +182,7 @@ namespace logid::backend::hidpp10 {
             BottomEdge = 0xc
         };
 
+        // Extra pairing metadata for newer receivers.
         struct ExtendedPairingInfo {
             uint32_t serialNumber;
             uint8_t reportTypes[4];

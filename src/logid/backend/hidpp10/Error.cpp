@@ -16,16 +16,31 @@
  *
  */
 
+/*
+ * File: Error.cpp
+ *
+ * HID++ 1.0 register error wrapper. This module stores raw register error
+ * codes and exposes them as daemon-readable exceptions.
+ */
+
 #include <backend/hidpp10/Error.h>
 #include <cassert>
 
 using namespace logid::backend;
 using namespace logid::backend::hidpp10;
 
+// Purpose: Record a HID++ 1.0 register error for later inspection.
+// Inputs: Error code and device index.
+// Outputs: Stored exception state.
+// Used by: register access paths.
 Error::Error(uint8_t code, hidpp::DeviceIndex index) : _code(code), _index(index) {
     assert(code != Success);
 }
 
+// Purpose: Return a descriptive message for the stored error code.
+// Inputs: None.
+// Outputs: Static error string.
+// Used by: exception reporting.
 const char* Error::what() const noexcept {
     switch (_code) {
         case Success:
@@ -59,10 +74,18 @@ const char* Error::what() const noexcept {
     }
 }
 
+// Purpose: Return the raw HID++ 1.0 error code.
+// Inputs: None.
+// Outputs: Error code byte.
+// Used by: error handling.
 uint8_t Error::code() const noexcept {
     return _code;
 }
 
+// Purpose: Return the device index that generated the error.
+// Inputs: None.
+// Outputs: Device index.
+// Used by: error handling.
 hidpp::DeviceIndex Error::deviceIndex() const noexcept {
     return _index;
 }

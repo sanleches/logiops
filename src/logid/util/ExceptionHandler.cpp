@@ -15,6 +15,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: ExceptionHandler.cpp
+ *
+ * Task exception normalization. This module converts exceptions raised from
+ * worker callbacks into logged warnings so background threads keep running.
+ */
+
 #include <util/ExceptionHandler.h>
 #include <system_error>
 #include <util/log.h>
@@ -23,6 +30,10 @@
 
 using namespace logid;
 
+// Purpose: Normalize exceptions raised from task callbacks.
+// Inputs: A caught exception reference.
+// Outputs: Logged warning message; no rethrow.
+// Used by: worker task execution.
 void ExceptionHandler::Default(std::exception& error) {
     try {
         throw error;

@@ -15,6 +15,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: ToggleHiresScroll.cpp
+ *
+ * Action that toggles the HiResScroll hardware feature on press. The action
+ * resolves the feature once, then flips the mode asynchronously when triggered.
+ */
+
 #include <actions/ToggleHiresScroll.h>
 #include <Device.h>
 #include <backend/hidpp20/features/ReprogControls.h>
@@ -24,8 +31,16 @@
 using namespace logid::actions;
 using namespace logid::backend;
 
+// Purpose: Name the IPC interface for this action.
+// Inputs: None.
+// Outputs: Static interface name string.
+// Used by: action construction.
 const char* ToggleHiresScroll::interface_name = "ToggleHiresScroll";
 
+// Purpose: Bind the action to the HiResScroll feature if available.
+// Inputs: Device and parent IPC node.
+// Outputs: Action object ready to toggle the feature.
+// Used by: HiResScroll toggle buttons.
 ToggleHiresScroll::ToggleHiresScroll(
         Device* dev,
         [[maybe_unused]] const std::shared_ptr<ipcgull::node>& parent) :
@@ -38,6 +53,10 @@ ToggleHiresScroll::ToggleHiresScroll(
                   _device->hidpp20().devicePath().c_str());
 }
 
+// Purpose: Toggle HiRes mode on press.
+// Inputs: None.
+// Outputs: Deferred mode update on the worker queue.
+// Used by: button press handling.
 void ToggleHiresScroll::press() {
     _pressed = true;
     if (_hires_scroll) {
@@ -51,10 +70,18 @@ void ToggleHiresScroll::press() {
     }
 }
 
+// Purpose: Clear the pressed marker.
+// Inputs: None.
+// Outputs: Button state no longer active.
+// Used by: button release handling.
 void ToggleHiresScroll::release() {
     _pressed = false;
 }
 
+// Purpose: Mark the button as temporarily diverted.
+// Inputs: None.
+// Outputs: Reprog flag bits.
+// Used by: hardware remapping.
 uint8_t ToggleHiresScroll::reprogFlags() const {
     return hidpp20::ReprogControls::TemporaryDiverted;
 }

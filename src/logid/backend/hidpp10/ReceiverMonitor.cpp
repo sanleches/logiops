@@ -16,6 +16,13 @@
  *
  */
 
+/*
+ * File: backend/hidpp10/ReceiverMonitor.cpp
+ *
+ * HID++ 1.0 receiver monitor. This module listens for receiver events,
+ * translates them into daemon actions, and drives pairing/enumeration state.
+ */
+
 #include <backend/hidpp10/ReceiverMonitor.h>
 #include <backend/Error.h>
 #include <util/task.h>
@@ -24,14 +31,22 @@
 using namespace logid::backend::hidpp10;
 using namespace logid::backend::hidpp;
 
+// Purpose: Bind a receiver monitor to the raw device and enable notifications.
+// Inputs: Receiver path, raw monitor, and timeout.
+// Outputs: Receiver-backed monitor.
+// Used by: receiver discovery.
 ReceiverMonitor::ReceiverMonitor(const std::string& path,
-                                 const std::shared_ptr<raw::DeviceMonitor>& monitor, double timeout)
+                                  const std::shared_ptr<raw::DeviceMonitor>& monitor, double timeout)
         : _receiver(Receiver::make(path, monitor, timeout)) {
 
     Receiver::NotificationFlags notification_flags{true, true, true};
     _receiver->setNotifications(notification_flags);
 }
 
+// Purpose: Register receiver event handlers once the monitor is ready.
+// Inputs: None.
+// Outputs: Event handlers attached and initial enumeration started.
+// Used by: receiver startup.
 void ReceiverMonitor::_ready() {
     if (_connect_ev_handler.empty()) {
         _connect_ev_handler = _receiver->rawDevice()->addEventHandler(
@@ -153,10 +168,18 @@ void ReceiverMonitor::_ready() {
     enumerate();
 }
 
+// Purpose: Ask the receiver to enumerate attached devices.
+// Inputs: None.
+// Outputs: Enumeration request sent to hardware.
+// Used by: startup and refresh paths.
 void ReceiverMonitor::enumerate() {
     _receiver->enumerate();
 }
 
+// Purpose: Wait for a specific device index to appear.
+// Inputs: Device index.
+// Outputs: Deferred connection handler.
+// Used by: pairing and hotplug logic.
 void ReceiverMonitor::waitForDevice(hidpp::DeviceIndex index) {
     const std::lock_guard lock(_wait_mutex);
     if (!_waiters.count(index)) {
@@ -185,10 +208,18 @@ void ReceiverMonitor::waitForDevice(hidpp::DeviceIndex index) {
     }
 }
 
+// Purpose: Return the owned receiver wrapper.
+// Inputs: None.
+// Outputs: Shared receiver handle.
+// Used by: pairing helpers.
 std::shared_ptr<Receiver> ReceiverMonitor::receiver() const {
     return _receiver;
 }
 
+// Purpose: Start pairing or discovery on the receiver.
+// Inputs: Pairing timeout.
+// Outputs: Pair state reset and pairing request sent.
+// Used by: pairing workflow.
 void ReceiverMonitor::_startPair(uint8_t timeout) {
     {
         std::lock_guard lock(_pair_mutex);
@@ -202,6 +233,10 @@ void ReceiverMonitor::_startPair(uint8_t timeout) {
         receiver()->startPairing(timeout);
 }
 
+// Purpose: Stop the current pairing or discovery session.
+// Inputs: None.
+// Outputs: Pairing workflow halted.
+// Used by: pairing workflow.
 void ReceiverMonitor::_stopPair() {
     PairState last_state;
     {
@@ -216,6 +251,10 @@ void ReceiverMonitor::_stopPair() {
         receiver()->stopPairing();
 }
 
+// Purpose: Attach a device handler for a newly connected receiver slot.
+// Inputs: Connection event and retry budget.
+// Outputs: Device hook installed or retried.
+// Used by: connection events.
 void ReceiverMonitor::_addHandler(const hidpp::DeviceConnectionEvent& event, int tries) {
     auto device_path = _receiver->devicePath();
     try {

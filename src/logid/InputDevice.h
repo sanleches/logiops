@@ -30,8 +30,11 @@ extern "C"
 }
 
 namespace logid {
+    // Wraps libevdev/uinput so actions can synthesize keyboard and relative
+    // events on a single shared virtual device.
     class InputDevice {
     public:
+        // Thrown when the code/name lookup does not map to a known input event.
         class InvalidEventCode : public std::exception {
         public:
             explicit InvalidEventCode(const std::string& name);
@@ -44,10 +47,14 @@ namespace logid {
             const std::string _what;
         };
 
+        // Create the virtual input device and pre-register common keyboard keys.
+        // The daemon uses this to emit events that look like real keyboard/mouse input.
         explicit InputDevice(const char* name);
 
         ~InputDevice();
 
+        // Register additional key or axis codes on demand.
+        // libevdev needs the event type/code enabled before the kernel will accept it.
         void registerKey(uint code);
 
         void registerAxis(uint axis);
@@ -66,6 +73,8 @@ namespace logid {
 
         static uint toAxisCode(const std::string& name);
 
+        // Map high-resolution wheel axes back to their low-resolution equivalents when possible.
+        // This helps gestures fall back cleanly on systems that only understand low-res wheels.
         static int getLowResAxis(uint axis_code);
 
     private:

@@ -33,6 +33,9 @@ struct udev_monitor;
 namespace logid::backend::raw {
     class IOMonitor;
 
+    // Tunable retry limits for raw-device readiness probing.
+    // Some devices appear before they are fully ready, so the monitor retries a
+    // few times before deciding the device is really unavailable.
     static constexpr int max_tries = 5;
     static constexpr int ready_backoff = 500;
 
@@ -50,10 +53,15 @@ namespace logid::backend::raw {
         }
     };
 
+    // Watches udev for hidraw add/remove events and forwards them to derived classes.
+    // It does not create device objects itself; subclasses decide what to do when
+    // a hidraw node appears or disappears.
     class DeviceMonitor {
     public:
         virtual ~DeviceMonitor();
 
+        // Scan existing hidraw nodes once at startup.
+        // This catches devices that were already plugged in before the daemon started.
         void enumerate();
 
         [[nodiscard]] std::shared_ptr<IOMonitor> ioMonitor() const;
@@ -70,7 +78,8 @@ namespace logid::backend::raw {
     protected:
         DeviceMonitor();
 
-        // This should be run once the derived class is ready
+        // This should be run once the derived class is ready.
+        // It starts the udev event stream only after the subclass has finished setup.
         void ready();
 
         virtual void addDevice(std::string device) = 0;

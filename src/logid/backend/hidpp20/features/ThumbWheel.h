@@ -23,6 +23,7 @@
 #include <backend/hidpp/Report.h>
 
 namespace logid::backend::hidpp20 {
+    // HID++ feature that exposes thumb-wheel capabilities and events.
     class ThumbWheel : public Feature {
     public:
         static const uint16_t ID = FeatureID::THUMB_WHEEL;
@@ -39,6 +40,7 @@ namespace logid::backend::hidpp20 {
             Event = 0 /* Catch-all event */
         };
 
+        // Bind the thumb-wheel feature to a device.
         explicit ThumbWheel(Device* dev);
 
         enum Capabilities : uint8_t {
@@ -77,12 +79,16 @@ namespace logid::backend::hidpp20 {
             uint8_t flags;
         };
 
+        // Read the wheel's resolution and capability block.
         [[nodiscard]] ThumbwheelInfo getInfo();
 
+        // Read the current divert/touch/proxy status.
         [[nodiscard]] ThumbwheelStatus getStatus();
 
+        // Enable divert mode and optionally invert direction.
         ThumbwheelStatus setStatus(bool divert, bool invert);
 
+        // Decode one thumb-wheel report into a structured event.
         [[nodiscard]] static ThumbwheelEvent thumbwheelEvent(const hidpp::Report& report);
     };
 }

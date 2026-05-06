@@ -23,6 +23,7 @@
 #include <backend/hidpp20/feature_defs.h>
 
 namespace logid::backend::hidpp20 {
+    // HID++ feature that reads the device's user-visible name.
     class DeviceName : public EssentialFeature {
     public:
         static const uint16_t ID = FeatureID::DEVICE_NAME;
@@ -34,10 +35,13 @@ namespace logid::backend::hidpp20 {
 
         [[nodiscard]] uint16_t getID() final { return ID; }
 
+        // Bind the name reader to a device.
         explicit DeviceName(hidpp::Device* device);
 
+        // Read the UTF-8 name length.
         [[nodiscard]] uint8_t getNameLength();
 
+        // Read the device name in chunks.
         [[nodiscard]] std::string getName();
     };
 }

@@ -22,12 +22,14 @@
 #include <backend/hidpp20/Feature.h>
 
 namespace logid::backend::hidpp20 {
+    // HID++ feature that switches the receiver between paired hosts.
     class ChangeHost : public Feature {
     public:
         static const uint16_t ID = FeatureID::CHANGE_HOST;
 
         [[nodiscard]] uint16_t getID() final { return ID; }
 
+        // Bind the host-switch helper to a device.
         explicit ChangeHost(Device* dev);
 
         enum Function {
@@ -43,8 +45,10 @@ namespace logid::backend::hidpp20 {
             bool enhancedHostSwitch;
         };
 
+        // Read the host count and current host index.
         HostInfo getHostInfo();
 
+        // Switch to another host slot.
         void setHost(uint8_t host);
 
         [[maybe_unused]] [[maybe_unused]] std::vector<uint8_t> getCookies();

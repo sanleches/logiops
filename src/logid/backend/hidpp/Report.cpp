@@ -16,6 +16,14 @@
  *
  */
 
+/*
+ * File: Report.cpp
+ *
+ * HID++ report packing/parsing helpers. This module builds short and long
+ * transport reports, recognizes supported report descriptors, and translates
+ * raw report buffers into typed device responses.
+ */
+
 #include <backend/hidpp/Report.h>
 #include <array>
 #include <algorithm>
@@ -84,6 +92,7 @@ static const std::array<uint8_t, 22> LongReportDesc2 = {
         0xC0            // End Collection
 };
 
+// Detect whether the descriptor contains the known short and long HID++ layouts.
 uint8_t hidpp::getSupportedReports(const std::vector<uint8_t>& report_desc) {
     uint8_t ret = 0;
 
@@ -106,14 +115,17 @@ uint8_t hidpp::getSupportedReports(const std::vector<uint8_t>& report_desc) {
     return ret;
 }
 
+// Human-readable report parsing errors.
 const char* Report::InvalidReportID::what() const noexcept {
     return "Invalid report ID";
 }
 
+// Human-readable report parsing errors.
 const char* Report::InvalidReportLength::what() const noexcept {
     return "Invalid report length";
 }
 
+// Build a report with the short or long HID++ payload layout.
 Report::Report(Report::Type type, DeviceIndex device_index,
                uint8_t sub_id, uint8_t address) {
     switch (type) {
@@ -133,6 +145,7 @@ Report::Report(Report::Type type, DeviceIndex device_index,
     _data[Offset::Address] = address;
 }
 
+// Build a report for the HID++ 2.0 feature/function form.
 Report::Report(Report::Type type, DeviceIndex device_index,
                uint8_t feature_index, uint8_t function, uint8_t sw_id) {
     assert(function <= 0x0f);
@@ -156,6 +169,7 @@ Report::Report(Report::Type type, DeviceIndex device_index,
                               (sw_id & 0x0f);
 }
 
+// Parse a raw report buffer and normalize it to the correct payload size.
 Report::Report(const std::vector<uint8_t>& data) :
         _data(data) {
     _data.resize(HeaderLength + LongParamLength);
@@ -173,10 +187,12 @@ Report::Report(const std::vector<uint8_t>& data) :
     }
 }
 
+// Return the report type.
 Report::Type Report::type() const {
     return static_cast<Report::Type>(_data[Offset::Type]);
 }
 
+// Update the report type and resize the backing buffer as needed.
 void Report::setType(Report::Type type) {
     switch (type) {
         case Type::Short:
@@ -192,6 +208,7 @@ void Report::setType(Report::Type type) {
     _data[Offset::Type] = type;
 }
 
+// Return the target device index.
 hidpp::DeviceIndex Report::deviceIndex() const {
     return static_cast<hidpp::DeviceIndex>(_data[Offset::DeviceIndex]);
 }
@@ -200,6 +217,7 @@ hidpp::DeviceIndex Report::deviceIndex() const {
     _data[Offset::DeviceIndex] = index;
 }
 
+// Return the HID++ feature field.
 uint8_t Report::feature() const {
     return _data[Offset::Feature];
 }
@@ -208,6 +226,7 @@ uint8_t Report::feature() const {
     _data[Offset::Parameters] = feature;
 }
 
+// Return the HID++ sub-id field.
 uint8_t Report::subId() const {
     return _data[Offset::SubID];
 }
@@ -216,6 +235,7 @@ uint8_t Report::subId() const {
     _data[Offset::SubID] = sub_id;
 }
 
+// Return the HID++ function field.
 uint8_t Report::function() const {
     return (_data[Offset::Function] >> 4) & 0x0f;
 }
@@ -225,6 +245,7 @@ uint8_t Report::function() const {
     _data[Offset::Function] |= (function & 0x0f) << 4;
 }
 
+// Return the software ID field.
 uint8_t Report::swId() const {
     return _data[Offset::Function] & 0x0f;
 }
@@ -234,6 +255,7 @@ void Report::setSwId(uint8_t sw_id) {
     _data[Offset::Function] |= sw_id & 0x0f;
 }
 
+// Return the address field.
 uint8_t Report::address() const {
     return _data[Offset::Address];
 }
@@ -242,22 +264,27 @@ uint8_t Report::address() const {
     _data[Offset::Address] = address;
 }
 
+// Return an iterator to the first report parameter byte.
 std::vector<uint8_t>::iterator Report::paramBegin() {
     return _data.begin() + Offset::Parameters;
 }
 
+// Return an iterator to the end of the parameter region.
 std::vector<uint8_t>::iterator Report::paramEnd() {
     return _data.end();
 }
 
+// Return a const iterator to the first report parameter byte.
 std::vector<uint8_t>::const_iterator Report::paramBegin() const {
     return _data.begin() + Offset::Parameters;
 }
 
+// Return a const iterator to the end of the parameter region.
 std::vector<uint8_t>::const_iterator Report::paramEnd() const {
     return _data.end();
 }
 
+// Copy a parameter payload into the report buffer.
 void Report::setParams(const std::vector<uint8_t>& _params) {
     assert(_params.size() <= _data.size() - HeaderLength);
 
@@ -265,6 +292,7 @@ void Report::setParams(const std::vector<uint8_t>& _params) {
         _data[Offset::Parameters + i] = _params[i];
 }
 
+// Detect a HID++ 1.0 error response and unpack its fields.
 bool Report::isError10(Report::Hidpp10Error& error) const {
     if (_data[Offset::Type] != Type::Short ||
         _data[Offset::SubID] != hidpp10::ErrorID)
@@ -278,6 +306,7 @@ bool Report::isError10(Report::Hidpp10Error& error) const {
     return true;
 }
 
+// Detect a HID++ 2.0 error response and unpack its fields.
 bool Report::isError20(Report::Hidpp20Error& error) const {
     if (_data[Offset::Type] != Type::Long ||
         _data[Offset::Feature] != hidpp20::ErrorID)
@@ -292,6 +321,7 @@ bool Report::isError20(Report::Hidpp20Error& error) const {
     return true;
 }
 
+// Return the raw report buffer for device I/O.
 const std::vector<uint8_t>& Report::rawReport() const {
     return _data;
 }

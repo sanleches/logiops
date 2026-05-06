@@ -22,6 +22,7 @@
 #include <backend/hidpp20/feature_defs.h>
 
 namespace logid::backend::hidpp20 {
+    // HID++ feature that reports and restores the active profile.
     class Reset : public Feature {
     public:
         static const uint16_t ID = FeatureID::RESET;
@@ -33,10 +34,13 @@ namespace logid::backend::hidpp20 {
             ResetToProfile = 1
         };
 
+        // Bind the reset helper to a device.
         explicit Reset(Device* device);
 
+        // Read the active profile number.
         uint16_t getProfile();
 
+        // Reset the device to a specific profile.
         void reset(uint16_t profile = 0);
     };
 }

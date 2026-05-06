@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: RemapButton.cpp
+ *
+ * Remappable button feature wrapper. This module discovers the device's
+ * programmable controls, maps each one to an action wrapper, listens for
+ * diverted button reports, and exposes the mapping tree over IPC.
+ */
+
 #include <features/RemapButton.h>
 #include <actions/GestureAction.h>
 #include <Device.h>
@@ -26,6 +34,10 @@ using namespace logid::features;
 using namespace logid::backend;
 using namespace logid::actions;
 
+// Purpose: Format debug output for control flags.
+// Inputs: Reprog control bits.
+// Outputs: Human-readable YES/empty strings.
+// Used by: debug logging.
 #define REPROG_FLAG(x) (control.second.flags & hidpp20::ReprogControls::x ? "YES" : "")
 #define REPROG_FLAG_ADDITIONAL(x) (control.second.additionalFlags & \
     hidpp20::ReprogControls::x ? "YES" : "")
@@ -34,6 +46,10 @@ static constexpr auto hidpp20_reprog_rebind =
         (hidpp20::ReprogControls::ChangeTemporaryDivert |
          hidpp20::ReprogControls::ChangeRawXYDivert);
 
+// Purpose: Discover remappable controls and build button wrappers.
+// Inputs: Device.
+// Outputs: Button mappings plus IPC tree.
+// Used by: device feature setup.
 RemapButton::RemapButton(Device* dev) : DeviceFeature(dev),
                                         _config(dev->activeProfile().buttons),
                                         _ipc_node(dev->ipcNode()->make_child("buttons")) {
@@ -53,6 +69,7 @@ RemapButton::RemapButton(Device* dev) : DeviceFeature(dev),
 
     for (const auto& control: _reprog_controls->getControls()) {
         const auto i = _buttons.size();
+        // Translate the action's divert bits back into HID++ reporting flags.
         Button::ConfigFunction func = [this, info = control.second](
                 const std::shared_ptr<actions::Action>& action) {
             hidpp20::ReprogControls::ControlInfo report{};
@@ -92,11 +109,19 @@ RemapButton::RemapButton(Device* dev) : DeviceFeature(dev),
     }
 }
 
+// Purpose: Re-apply each button's current action mapping.
+// Inputs: None.
+// Outputs: Button actions refreshed from config.
+// Used by: device reconfiguration.
 void RemapButton::configure() {
     for (const auto& button: _buttons)
         button.second->configure();
 }
 
+// Purpose: Register the HID++ event listener for diverted buttons and raw XY.
+// Inputs: None.
+// Outputs: Event handler attached or reused.
+// Used by: feature lifecycle.
 void RemapButton::listen() {
     if (_ev_handler.empty()) {
         _ev_handler = _device->hidpp20().addEventHandler(
@@ -138,6 +163,10 @@ void RemapButton::listen() {
     }
 }
 
+// Purpose: Switch to a different profile and rebind each button config.
+// Inputs: Profile reference.
+// Outputs: Button mappings updated.
+// Used by: profile switching.
 void RemapButton::setProfile(config::Profile& profile) {
     std::lock_guard<std::mutex> lock(_button_lock);
 
@@ -150,6 +179,10 @@ void RemapButton::setProfile(config::Profile& profile) {
         button.second->setProfile(config[button.first]);
 }
 
+// Purpose: Update pressed-button state and forward transitions to actions.
+// Inputs: New pressed-button set.
+// Outputs: Button press/release callbacks.
+// Used by: diverted-button event handling.
 void RemapButton::_buttonEvent(const std::set<uint16_t>& new_state) {
     // Ensure I/O doesn't occur while updating button state
     std::lock_guard<std::mutex> lock(_button_lock);
@@ -209,6 +242,10 @@ Button::Button(Info info, int index,
     _ipc_interface = _node->make_interface<IPC>(this, _info);
 }
 
+// Purpose: Build the action object for one button.
+// Inputs: Button config.
+// Outputs: Action object or null.
+// Used by: button initialization.
 void Button::_makeConfig() {
     auto& config = _config.get();
     if (config.action.has_value()) {
@@ -220,6 +257,10 @@ void Button::_makeConfig() {
     }
 }
 
+// Purpose: Mark the button pressed and forward to the action.
+// Inputs: None.
+// Outputs: Action press notification.
+// Used by: HID++ button events.
 void Button::press() {
     std::shared_lock lock(_action_lock);
     _first_move = true;
@@ -227,12 +268,15 @@ void Button::press() {
         _action->press();
 }
 
+// Forward the release event to the mapped action.
 void Button::release() const {
     std::shared_lock lock(_action_lock);
     if (_action)
         _action->release();
 }
 
+// Forward the first movement event after press only after the button is held.
+// This avoids sending movement during the same packet that reported the press.
 void Button::move(int16_t x, int16_t y) {
     std::shared_lock lock(_action_lock);
     if (_action && !_first_move)
@@ -241,6 +285,8 @@ void Button::move(int16_t x, int16_t y) {
         _first_move = false;
 }
 
+// Ask the mapped action whether it is currently active.
+// Drag-style remaps use this to decide whether raw XY motion should keep flowing.
 bool Button::pressed() const {
     std::shared_lock lock(_action_lock);
     if (_action)
@@ -248,11 +294,14 @@ bool Button::pressed() const {
     return false;
 }
 
+// Re-run the current action's hardware configuration callback.
 void Button::configure() const {
     std::shared_lock lock(_action_lock);
     _conf_func(_action);
 }
 
+// Replace the button mapping using a different profile entry.
+// The old action is discarded so the new profile starts with a clean slate.
 void Button::setProfile(config::Button& config) {
     std::unique_lock lock(_action_lock);
     _config = config;
@@ -283,6 +332,8 @@ Button::IPC::IPC(Button* parent, const Info& info) :
                            }, {}), _button(*parent) {
 }
 
+// Replace the action mapping using a new type name from IPC.
+// This is the entry point used when a user edits one button assignment.
 void Button::IPC::setAction(const std::string& type) {
     if (!(_button._info.flags & hidpp20::ReprogControls::TemporaryDivertable))
         throw std::invalid_argument("Non-remappable");

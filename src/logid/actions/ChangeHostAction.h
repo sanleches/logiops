@@ -22,19 +22,25 @@
 #include <backend/hidpp20/features/ChangeHost.h>
 
 namespace logid::actions {
+    // Action that switches the receiver host slot when activated.
     class ChangeHostAction : public Action {
     public:
         static const char* interface_name;
 
+        // Bind the action to the host-switch feature and config entry.
         ChangeHostAction(Device* device, config::ChangeHost& config,
                          const std::shared_ptr<ipcgull::node>& parent);
 
+        // Press does nothing; the change is applied on release.
         void press() final;
 
+        // Release selects the configured host slot.
         void release() final;
 
+        // Read the configured host selector in human-readable form.
         [[nodiscard]] std::string getHost() const;
 
+        // Accept a host selector such as next, prev, or a numeric index.
         void setHost(std::string host);
 
         [[nodiscard]] uint8_t reprogFlags() const final;

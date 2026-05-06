@@ -16,6 +16,15 @@
  *
  */
 
+/*
+ * File: DeviceManager.cpp
+ *
+ * Central runtime coordinator for logid. This module owns device and receiver
+ * discovery, the shared virtual input target, the IPC roots exported to
+ * clients, and the bookkeeping needed to keep hotplug state consistent while
+ * hardware appears, disappears, or becomes temporarily unavailable.
+ */
+
 #include <DeviceManager.h>
 #include <backend/Error.h>
 #include <util/log.h>
@@ -27,6 +36,10 @@
 using namespace logid;
 using namespace logid::backend;
 
+// Purpose: Own device discovery, device lifetime, and the exported IPC trees.
+// Inputs: `Configuration`, the shared virtual input device, and the IPC server.
+// Outputs: A manager that can enumerate, attach, and remove devices/receivers.
+// Used by: `main()`, `Receiver`, and the raw hotplug monitor.
 DeviceManager::DeviceManager(std::shared_ptr<Configuration> config,
                              std::shared_ptr<InputDevice> virtual_input,
                              std::shared_ptr<ipcgull::server> server) :
@@ -44,18 +57,34 @@ DeviceManager::DeviceManager(std::shared_ptr<Configuration> config,
     _root_node->add_server(_server);
 }
 
+// Purpose: Return the shared runtime configuration.
+// Inputs: None.
+// Outputs: The configuration object.
+// Used by: device, receiver, and monitor setup.
 std::shared_ptr<Configuration> DeviceManager::config() const {
     return _config;
 }
 
+// Purpose: Return the shared virtual input device.
+// Inputs: None.
+// Outputs: The synthetic input target.
+// Used by: action and feature paths.
 std::shared_ptr<InputDevice> DeviceManager::virtualInput() const {
     return _virtual_input;
 }
 
+// Purpose: Return the IPC root for devices.
+// Inputs: None.
+// Outputs: The device subtree root.
+// Used by: device IPC construction.
 std::shared_ptr<const ipcgull::node> DeviceManager::devicesNode() const {
     return _device_node;
 }
 
+// Purpose: Return the IPC root for receivers.
+// Inputs: None.
+// Outputs: The receiver subtree root.
+// Used by: receiver IPC construction.
 std::shared_ptr<const ipcgull::node> DeviceManager::receiversNode() const {
     return _receiver_node;
 }
@@ -64,7 +93,13 @@ void DeviceManager::addDevice(std::string path) {
     bool defaultExists = true;
     bool isReceiver = false;
 
-    // Check if device is ignored before continuing
+// Purpose: Attach one hidraw node after deciding it is worth initializing.
+// Inputs: A kernel device path.
+// Outputs: A `Device` or `Receiver` entry in the manager maps, or no-op if the
+// node is ignored, unsupported, or not ready yet.
+// Used by: `backend::raw::DeviceMonitor` hotplug callbacks.
+    // Open the raw node once to check the product ID before spending time on
+    // full HID++ initialization.
     {
         auto raw_dev = raw::RawDevice::make(path, self<DeviceManager>().lock());
         if (config()->ignore.has_value() &&
@@ -76,6 +111,8 @@ void DeviceManager::addDevice(std::string path) {
     }
 
     try {
+        // Receivers appear as HID++ 1.0 at this probe stage, which lets us split
+        // them from direct devices without a second full initialization pass.
         auto device = hidpp::Device::make(
                 path, hidpp::DefaultDevice, self<DeviceManager>().lock(),
                 config()->io_timeout.value_or(defaults::io_timeout));
@@ -112,8 +149,9 @@ void DeviceManager::addDevice(std::string path) {
         _receivers.emplace(path, receiver);
         _ipc_receivers->receiverAdded(receiver);
     } else {
-        /* TODO: Can non-receivers only contain 1 device?
-        * If the device exists, it is guaranteed to be an HID++ 2.0 device */
+        // Non-receiver devices are treated as direct devices. If the default
+        // HID++ path fails, try the corded-device fallback before giving up so
+        // wired devices still work when the kernel exposes a different index.
         if (defaultExists) {
             auto device = Device::make(path, hidpp::DefaultDevice, self<DeviceManager>().lock());
             std::lock_guard<std::mutex> lock(_map_lock);
@@ -144,18 +182,34 @@ void DeviceManager::addDevice(std::string path) {
     }
 }
 
+// Purpose: Forward receiver-created child devices to IPC listeners.
+// Inputs: A live `Device` instance created by `Receiver`.
+// Outputs: A `DeviceAdded` signal on the device interface.
+// Used by: `Receiver::addDevice()`.
 void DeviceManager::addExternalDevice(const std::shared_ptr<Device>& d) {
     _ipc_devices->deviceAdded(d);
 }
 
+// Purpose: Forward receiver-removed child devices to IPC listeners.
+// Inputs: A live `Device` instance being removed.
+// Outputs: A `DeviceRemoved` signal on the device interface.
+// Used by: `Receiver::removeDevice()` and `Receiver::~Receiver()`.
 void DeviceManager::removeExternalDevice(const std::shared_ptr<Device>& d) {
     _ipc_devices->deviceRemoved(d);
 }
 
+// Purpose: Return the manager mutex used for device map updates.
+// Inputs: None.
+// Outputs: Reference to the shared mutex.
+// Used by: receivers and hotplug handlers.
 std::mutex& DeviceManager::mutex() const {
     return _map_lock;
 }
 
+// Purpose: Remove one device or receiver by hidraw path.
+// Inputs: Kernel device path.
+// Outputs: The matching IPC object is dropped.
+// Used by: hotplug remove events.
 void DeviceManager::removeDevice(std::string path) {
     std::lock_guard<std::mutex> lock(_map_lock);
     auto receiver = _receivers.find(path);
@@ -191,6 +245,10 @@ DeviceManager::DevicesIPC::DevicesIPC(DeviceManager* manager) :
                 }) {
 }
 
+// Purpose: Return a consistent snapshot of all devices.
+// Inputs: None.
+// Outputs: A vector of direct devices plus receiver-backed child devices.
+// Used by: IPC enumeration calls and object tree inspection.
 std::vector<std::shared_ptr<Device>> DeviceManager::listDevices() const {
     std::lock_guard<std::mutex> lock(_map_lock);
     std::vector<std::shared_ptr<Device>> devices;
@@ -204,6 +262,10 @@ std::vector<std::shared_ptr<Device>> DeviceManager::listDevices() const {
     return devices;
 }
 
+// Purpose: Return a consistent snapshot of all receivers.
+// Inputs: None.
+// Outputs: A vector of receiver objects.
+// Used by: IPC enumeration calls.
 std::vector<std::shared_ptr<Receiver>> DeviceManager::listReceivers() const {
     std::lock_guard<std::mutex> lock(_map_lock);
     std::vector<std::shared_ptr<Receiver>> receivers;
@@ -212,11 +274,19 @@ std::vector<std::shared_ptr<Receiver>> DeviceManager::listReceivers() const {
     return receivers;
 }
 
+// Purpose: Notify observers that a new direct device exists.
+// Inputs: The attached device object.
+// Outputs: `DeviceAdded` on the IPC bus.
+// Used by: `addDevice()`.
 void DeviceManager::DevicesIPC::deviceAdded(
         const std::shared_ptr<Device>& d) {
     emit_signal("DeviceAdded", d);
 }
 
+// Purpose: Notify observers that a direct device disappeared.
+// Inputs: The removed device object.
+// Outputs: `DeviceRemoved` on the IPC bus.
+// Used by: `removeDevice()`.
 void DeviceManager::DevicesIPC::deviceRemoved(
         const std::shared_ptr<Device>& d) {
     emit_signal("DeviceRemoved", d);
@@ -240,16 +310,28 @@ DeviceManager::ReceiversIPC::ReceiversIPC(DeviceManager* manager) :
                 }) {
 }
 
+// Purpose: Notify observers that a new receiver exists.
+// Inputs: The attached receiver object.
+// Outputs: `ReceiverAdded` on the IPC bus.
+// Used by: `addDevice()` when a hidraw node is classified as a receiver.
 void DeviceManager::ReceiversIPC::receiverAdded(
         const std::shared_ptr<Receiver>& r) {
     emit_signal("ReceiverAdded", r);
 }
 
+// Purpose: Notify observers that a receiver disappeared.
+// Inputs: The removed receiver object.
+// Outputs: `ReceiverRemoved` on the IPC bus.
+// Used by: `removeDevice()`.
 void DeviceManager::ReceiversIPC::receiverRemoved(
         const std::shared_ptr<Receiver>& r) {
     emit_signal("ReceiverRemoved", r);
 }
 
+// Purpose: Allocate the next stable device nickname.
+// Inputs: None.
+// Outputs: A unique integer used in IPC paths.
+// Used by: `DeviceNickname`.
 int DeviceManager::newDeviceNickname() {
     std::lock_guard<std::mutex> lock(_nick_lock);
 
@@ -285,6 +367,10 @@ int DeviceManager::newDeviceNickname() {
     return ret;
 }
 
+// Purpose: Allocate the next stable receiver nickname.
+// Inputs: None.
+// Outputs: A unique integer used in receiver IPC paths.
+// Used by: `ReceiverNickname`.
 int DeviceManager::newReceiverNickname() {
     std::lock_guard<std::mutex> lock(_nick_lock);
 

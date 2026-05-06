@@ -16,16 +16,31 @@
  *
  */
 
+/*
+ * File: Error.cpp
+ *
+ * HID++ 2.0 feature error wrapper. This module stores raw feature error codes
+ * and exposes them as daemon-readable exceptions.
+ */
+
 #include <backend/hidpp20/Error.h>
 #include <cassert>
 
 using namespace logid::backend;
 using namespace logid::backend::hidpp20;
 
+// Purpose: Record a HID++ 2.0 feature error for later inspection.
+// Inputs: Error code and device index.
+// Outputs: Stored exception state.
+// Used by: feature call paths.
 Error::Error(uint8_t code, hidpp::DeviceIndex index) : _code(code), _index (index) {
     assert(_code != NoError);
 }
 
+// Purpose: Return a descriptive message for the stored error code.
+// Inputs: None.
+// Outputs: Static error string.
+// Used by: exception reporting.
 const char* Error::what() const noexcept {
     switch (_code) {
         case NoError:
@@ -55,10 +70,18 @@ const char* Error::what() const noexcept {
     }
 }
 
+// Purpose: Return the raw HID++ 2.0 error code.
+// Inputs: None.
+// Outputs: Error code byte.
+// Used by: error handling.
 uint8_t Error::code() const noexcept {
     return _code;
 }
 
+// Purpose: Return the device index that generated the error.
+// Inputs: None.
+// Outputs: Device index.
+// Used by: error handling.
 hidpp::DeviceIndex Error::deviceIndex() const noexcept {
     return _index;
 }

@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: task.cpp
+ *
+ * Background worker queue used by the daemon. This module owns the task
+ * priority queue, worker startup/shutdown, and the helpers used to schedule
+ * work immediately or after a delay.
+ */
+
 #include <util/task.h>
 #include <queue>
 #include <optional>
@@ -23,6 +31,10 @@
 using namespace logid;
 using namespace std::chrono;
 
+// Purpose: Order tasks by earliest scheduled time.
+// Inputs: Two task objects.
+// Outputs: Priority comparison result.
+// Used by: task queue ordering.
 struct task_less {
 private:
     std::greater<> greater;
@@ -38,6 +50,10 @@ static std::condition_variable task_cv {};
 static std::atomic_bool workers_init = false;
 static std::atomic_bool workers_run = false;
 
+// Purpose: Stop all worker threads and let them drain.
+// Inputs: None.
+// Outputs: Worker loop termination.
+// Used by: process exit.
 void stop_workers() {
     std::unique_lock lock(task_mutex);
     if (workers_init) {
@@ -50,6 +66,10 @@ void stop_workers() {
     }
 }
 
+// Purpose: Run scheduled tasks off-thread.
+// Inputs: None.
+// Outputs: Task callbacks executed in time order.
+// Used by: background worker threads.
 void worker() {
     std::unique_lock lock(task_mutex);
     while (workers_run) {
@@ -58,8 +78,8 @@ void worker() {
         if (!workers_run)
             break;
 
-        /* top task is in the future, wait */
-        if (tasks.top().time >= system_clock::now()) {
+            // The next task is in the future, so sleep until it becomes due.
+            if (tasks.top().time >= system_clock::now()) {
             auto wait = tasks.top().time - system_clock::now();
             task_cv.wait_for(lock, wait, []() {
                 return (!tasks.empty() && (tasks.top().time < system_clock::now())) ||
@@ -71,7 +91,7 @@ void worker() {
         }
 
         if (!tasks.empty()) {
-            /* May have timed out and is no longer empty */
+            // The queue may have changed while waiting, so re-check before running.
             auto f = tasks.top().function;
             tasks.pop();
 
@@ -86,6 +106,10 @@ void worker() {
     }
 }
 
+// Purpose: Spawn the background workers once during startup.
+// Inputs: Worker count.
+// Outputs: Detached worker threads and exit hook.
+// Used by: daemon initialization.
 void logid::init_workers(int worker_count) {
     std::lock_guard lock(task_mutex);
     assert(!workers_init);
@@ -99,6 +123,10 @@ void logid::init_workers(int worker_count) {
     atexit(&stop_workers);
 }
 
+// Purpose: Queue a task for immediate execution.
+// Inputs: Callback function.
+// Outputs: Scheduled task entry.
+// Used by: action and device code.
 void logid::run_task(std::function<void()> function) {
     task t{
             .function = std::move(function),
@@ -108,6 +136,10 @@ void logid::run_task(std::function<void()> function) {
     run_task(t);
 }
 
+// Purpose: Queue a task to run after a delay.
+// Inputs: Callback function and delay.
+// Outputs: Scheduled delayed task entry.
+// Used by: retry and deferred-action paths.
 void logid::run_task_after(std::function<void()> function, std::chrono::milliseconds delay) {
     task t{
             .function = std::move(function),
@@ -117,6 +149,10 @@ void logid::run_task_after(std::function<void()> function, std::chrono::millisec
     run_task(t);
 }
 
+// Purpose: Insert a task into the priority queue.
+// Inputs: One task record.
+// Outputs: Task enqueued and one worker notified.
+// Used by: the public scheduling helpers.
 void logid::run_task(task t) {
     std::lock_guard lock(task_mutex);
 

@@ -24,8 +24,10 @@
 #include <cstdint>
 
 namespace logid::backend::hidpp20 {
+    // HID++ 2.0 error identifier used in long reports.
     static constexpr uint8_t ErrorID = 0xFF;
 
+    // Represents an error returned by a HID++ 2.0 feature call.
     class Error : public std::exception {
     public:
         enum ErrorCode : uint8_t {
@@ -42,6 +44,7 @@ namespace logid::backend::hidpp20 {
             UnknownDevice = 10
         };
 
+        // Store the feature error code and the affected device index.
         Error(uint8_t code, hidpp::DeviceIndex index);
 
         [[nodiscard]] const char* what() const noexcept override;

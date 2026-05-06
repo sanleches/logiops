@@ -16,6 +16,15 @@
  *
  */
 
+/*
+ * File: logid.cpp
+ *
+ * Daemon entry point for logiops. This file is responsible for parsing the
+ * command line, loading configuration, starting worker infrastructure, wiring
+ * up the IPC server, creating the virtual input target, and handing control to
+ * the device manager that discovers and configures Logitech hardware.
+ */
+
 #include <DeviceManager.h>
 #include <InputDevice.h>
 #include <util/task.h>
@@ -33,6 +42,10 @@ static constexpr auto default_config = "/etc/logid.cfg";
 
 using namespace logid;
 
+// Command-line options are intentionally minimal because the daemon's runtime
+// behavior is mostly driven by the config file. The parser only needs to know
+// which config file to load and which log level should be active before the
+// rest of startup begins.
 struct CmdlineOptions {
     std::string config_file = default_config;
 };
@@ -47,14 +60,18 @@ enum class Option {
     Version
 };
 
+// Purpose: Parse the daemon command line before any config or device work starts.
+// Inputs: `argc`, `argv`, and the mutable `options` output.
+// Outputs: Populates the config path and log level, or exits on help/version/error.
+// Used by: `main()`.
 void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
     for (int i = 1; i < argc; i++) {
         Option option = Option::None;
         if (argv[i][0] == '-') {
-            // This argument is an option
+            // This argument is an option.
             switch (argv[i][1]) {
                 case '-': {
-                    // Full option name
+                    // Full option name.
                     std::string op_str = argv[i];
                     if (op_str == "--verbose") option = Option::Verbose;
                     if (op_str == "--config") option = Option::Config;
@@ -62,16 +79,16 @@ void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
                     if (op_str == "--version") option = Option::Version;
                     break;
                 }
-                case 'v': // Verbosity
+                case 'v': // Verbosity.
                     option = Option::Verbose;
                     break;
-                case 'V': //Version
+                case 'V': // Version.
                     option = Option::Version;
                     break;
-                case 'c': // Config file path
+                case 'c': // Config file path.
                     option = Option::Config;
                     break;
-                case 'h': // Help
+                case 'h': // Help.
                     option = Option::Help;
                     break;
                 default:
@@ -82,7 +99,7 @@ void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
             switch (option) {
                 case Option::Verbose: {
                     if (++i >= argc) {
-                        global_loglevel = DEBUG; // Assume debug verbosity
+                        global_loglevel = DEBUG; // Default to debug when no level follows.
                         break;
                     }
                     std::string loglevel = argv[i];
@@ -90,8 +107,8 @@ void readCliOptions(const int argc, char** argv, CmdlineOptions& options) {
                         global_loglevel = toLogLevel(argv[i]);
                     } catch (std::invalid_argument& e) {
                         if (argv[i][0] == '-') {
-                            global_loglevel = DEBUG; // Assume debug verbosity
-                            i--; // Go back to last argument to continue loop.
+                            global_loglevel = DEBUG; // Treat the next flag as the next option.
+                            i--;
                         } else {
                             logPrintf(WARN, e.what());
                             printf("Valid verbosity levels are: Debug, Info, "
@@ -130,18 +147,23 @@ Possible options are:
 }
 
 int main(int argc, char** argv) {
+    // Purpose: Boot the daemon in a predictable order.
+    // Inputs: Process arguments and the runtime environment.
+    // Outputs: A running daemon or an early exit on startup failure.
+    // References: `Configuration`, `InputDevice`, `DeviceManager`, and
+    // `ipcgull::make_server()`.
     CmdlineOptions options{};
     readCliOptions(argc, argv, options);
     std::shared_ptr<Configuration> config;
     std::shared_ptr<InputDevice> virtual_input;
 
 
-    /* Set stdout buff to Null so that loging system like journal
-     * can actually read it.
-     */
+    // Keep stdout unbuffered so startup logs reach journald and similar
+    // collectors immediately.
     setbuf(stdout, NULL);
 
-    // Read config
+    // Load the config before touching devices or IPC so the rest of the
+    // runtime uses a stable snapshot of user preferences and defaults.
     try {
         config = std::make_shared<Configuration>(options.config_file);
     } catch (std::exception &e) {
@@ -149,17 +171,24 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
+    // Worker threads run deferred actions and profile updates so input handling
+    // can stay responsive while slower configuration work happens elsewhere.
     init_workers(config->workers.value_or(defaults::workers));
 
+    // The daemon can publish IPC on either the system bus or the user bus,
+    // depending on the build-time bus selection.
 #ifdef USE_USER_BUS
     auto server_bus = ipcgull::IPCGULL_USER;
 #else
     auto server_bus = ipcgull::IPCGULL_SYSTEM;
 #endif
 
+    // Create the IPC server only after config is available so the exported
+    // object tree is consistent with the current runtime configuration.
     auto server = ipcgull::make_server(SERVICE_ROOT_NAME, server_root_node, server_bus);
 
-    //Create a virtual input device
+    // Create the synthetic keyboard/mouse target that action objects write to.
+    // This is the OS-visible device used to emit remapped input events.
     try {
         virtual_input = std::make_unique<InputDevice>(virtual_input_name);
     } catch (std::system_error& e) {
@@ -167,7 +196,9 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    // Device manager runs on its own I/O thread asynchronously
+    // Device discovery and device-specific callbacks run asynchronously on a
+    // dedicated I/O path. The manager owns the lifetime of direct devices,
+    // receivers, and the IPC nodes exported for them.
     auto device_manager = DeviceManager::make<DeviceManager>(config, virtual_input, server);
 
     device_manager->enumerate();

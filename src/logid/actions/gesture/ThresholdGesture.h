@@ -21,17 +21,22 @@
 #include <actions/gesture/Gesture.h>
 
 namespace logid::actions {
+    // Gesture that fires its action once when movement crosses a threshold.
     class ThresholdGesture : public Gesture {
     public:
         static const char* interface_name;
 
+        // Bind the gesture to the threshold-action config.
         ThresholdGesture(Device* device, config::ThresholdGesture& config,
                          const std::shared_ptr<ipcgull::node>& parent);
 
+        // Start tracking movement for a new gesture sequence.
         void press(bool init_threshold) final;
 
+        // Reset the one-shot state after release.
         void release(bool primary) final;
 
+        // Fire the action when the threshold is reached.
         void move(int16_t axis) final;
 
         [[nodiscard]] bool metThreshold() const final;

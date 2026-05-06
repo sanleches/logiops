@@ -15,6 +15,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: IOMonitor.cpp
+ *
+ * Shared epoll-based dispatcher for raw file descriptors. It serializes fd
+ * registration and shutdown, fans readiness events out to per-device handlers,
+ * and provides the synchronization needed so background I/O does not race with
+ * hotplug teardown.
+ */
+
 #include <backend/raw/IOMonitor.h>
 #include <util/log.h>
 #include <optional>
@@ -28,6 +37,10 @@ extern "C"
 
 using namespace logid::backend::raw;
 
+// Purpose: Store the callback trio for one monitored fd.
+// Inputs: Read, hangup, and error callbacks.
+// Outputs: An `IOHandler` value the epoll loop can invoke.
+// Used by: `IOMonitor::add()`.
 IOHandler::IOHandler(std::function<void()> r,
                      std::function<void()> hup,
                      std::function<void()> err) :
@@ -36,6 +49,10 @@ IOHandler::IOHandler(std::function<void()> r,
         error(std::move(err)) {
 }
 
+// Purpose: Start the shared epoll dispatcher and worker thread.
+// Inputs: None.
+// Outputs: A live background listener plus an eventfd wakeup path.
+// References: `epoll_create1`, `eventfd`, and `_listen()`.
 IOMonitor::IOMonitor() : _epoll_fd(epoll_create1(0)),
                          _event_fd(eventfd(0, EFD_NONBLOCK)) {
     if (_epoll_fd < 0) {
@@ -64,6 +81,10 @@ IOMonitor::IOMonitor() : _epoll_fd(epoll_create1(0)),
     });
 }
 
+// Purpose: Stop the dispatcher and release kernel resources.
+// Inputs: None.
+// Outputs: The worker thread is joined and fds are closed.
+// Used by: object destruction.
 IOMonitor::~IOMonitor() noexcept {
     _stop();
 
@@ -74,6 +95,10 @@ IOMonitor::~IOMonitor() noexcept {
         ::close(_epoll_fd);
 }
 
+// Purpose: Forward epoll events to the registered callbacks.
+// Inputs: None.
+// Outputs: Repeated dispatch of read/hangup/error handlers until stop.
+// Used by: the worker thread created in the constructor.
 void IOMonitor::_listen() {
     std::unique_lock lock(_run_mutex);
     std::vector<struct epoll_event> events;
@@ -125,12 +150,20 @@ void IOMonitor::_listen() {
     }
 }
 
+// Purpose: Stop the loop and wake the epoll thread.
+// Inputs: None.
+// Outputs: The listener exits and joins cleanly.
+// Used by: destructor.
 void IOMonitor::_stop() noexcept {
     _is_running = false;
     _yield();
     _io_thread->join();
 }
 
+// Purpose: Yield the run lock while registration changes are made.
+// Inputs: None.
+// Outputs: A lock that protects epoll mutation.
+// Used by: `add()` and `remove()`.
 std::unique_lock<std::mutex> IOMonitor::_yield() noexcept {
     /* Prevent listener thread from grabbing lock during yielding */
     std::unique_lock yield_lock(_yield_mutex);
@@ -144,6 +177,10 @@ std::unique_lock<std::mutex> IOMonitor::_yield() noexcept {
     return run_lock;
 }
 
+// Purpose: Register one fd with the shared epoll loop.
+// Inputs: Descriptor and callback trio.
+// Outputs: Descriptor becomes active in the monitor.
+// Used by: `RawDevice::_ready()` and `DeviceMonitor::ready()`.
 void IOMonitor::add(int fd, IOHandler handler) {
     const auto lock = _yield();
 
@@ -160,6 +197,10 @@ void IOMonitor::add(int fd, IOHandler handler) {
     }
 }
 
+// Purpose: Unregister one fd from the epoll loop.
+// Inputs: Descriptor to remove.
+// Outputs: Descriptor is no longer monitored.
+// Used by: raw device teardown.
 void IOMonitor::remove(int fd) noexcept {
     const auto lock = _yield();
     ::epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, fd, nullptr);

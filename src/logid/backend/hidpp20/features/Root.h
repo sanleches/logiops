@@ -24,12 +24,14 @@
 
 namespace logid::backend::hidpp20 {
 
+    // Root feature used to discover other HID++ 2.0 features.
     class Root : public EssentialFeature {
     public:
         static const uint16_t ID = FeatureID::ROOT;
 
         uint16_t getID() final { return ID; }
 
+        // Bind the root feature to the device.
         explicit Root(hidpp::Device* device);
 
         enum Function : uint8_t {
@@ -37,10 +39,13 @@ namespace logid::backend::hidpp20 {
             Ping = 1
         };
 
+        // Query metadata for one feature ID.
         feature_info getFeature(uint16_t feature_id);
 
+        // Ping the device and return the echoed byte.
         uint8_t ping(uint8_t byte);
 
+        // Read the root feature version, handling the older 0x11 quirk.
         std::tuple<uint8_t, uint8_t> getVersion();
 
         enum FeatureFlag : uint8_t {

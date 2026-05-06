@@ -16,6 +16,13 @@
  *
  */
 
+/*
+ * File: EssentialFeature.cpp
+ *
+ * HID++ 2.0 feature base that resolves runtime feature IDs and sends feature
+ * function calls through the device transport.
+ */
+
 #include <backend/hidpp20/Feature.h>
 #include <backend/hidpp20/EssentialFeature.h>
 #include <backend/hidpp20/features/Root.h>
@@ -24,6 +31,10 @@
 
 using namespace logid::backend::hidpp20;
 
+// Purpose: Send a feature call and return the payload bytes.
+// Inputs: Function ID and parameter buffer.
+// Outputs: Response payload bytes.
+// Used by: feature wrappers.
 std::vector<uint8_t> EssentialFeature::callFunction(uint8_t function_id,
                                                     std::vector<uint8_t>& params) {
     hidpp::Report::Type type;
@@ -43,6 +54,10 @@ std::vector<uint8_t> EssentialFeature::callFunction(uint8_t function_id,
     return {response.paramBegin(), response.paramEnd()};
 }
 
+// Purpose: Resolve the runtime feature index for the requested HID++ 2.0 feature.
+// Inputs: Device and compile-time feature ID.
+// Outputs: Feature base initialized or unsupported feature error.
+// Used by: concrete feature wrappers.
 EssentialFeature::EssentialFeature(hidpp::Device* dev, uint16_t _id) :
         _device(dev) {
     _index = hidpp20::FeatureID::ROOT;

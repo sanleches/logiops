@@ -15,12 +15,24 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
+/*
+ * File: DeviceStatus.cpp
+ *
+ * Device-status feature wrapper. This module exposes wireless reconnection
+ * status and forwards firmware wake/reconnect notifications to the daemon.
+ */
+
 #include <features/DeviceStatus.h>
 #include <util/task.h>
 
 using namespace logid::features;
 using namespace logid::backend;
 
+// Purpose: Wire the wireless status backend unless the device is already behind a receiver.
+// Inputs: Device.
+// Outputs: Device-status wrapper or unsupported feature.
+// Used by: device startup.
 DeviceStatus::DeviceStatus(logid::Device* dev) : DeviceFeature(dev) {
     /* This feature is redundant on receivers since the receiver
      * handles wakeup/sleep events. If the device is connected on a
@@ -37,10 +49,18 @@ DeviceStatus::DeviceStatus(logid::Device* dev) : DeviceFeature(dev) {
     }
 }
 
+// Purpose: Skip configuration because this feature has no device state.
+// Inputs: None.
+// Outputs: No-op.
+// Used by: profile application.
 void DeviceStatus::configure() {
     // Do nothing
 }
 
+// Purpose: Wake the device when the firmware says a reconnection is needed.
+// Inputs: None.
+// Outputs: Deferred wakeup task.
+// Used by: wireless status events.
 void DeviceStatus::listen() {
     if (_ev_handler.empty()) {
         _ev_handler = _device->hidpp20().addEventHandler(
@@ -63,5 +83,9 @@ void DeviceStatus::listen() {
     }
 }
 
+// Purpose: Ignore profile switches because the feature is global.
+// Inputs: Profile configuration.
+// Outputs: No-op.
+// Used by: profile change handling.
 void DeviceStatus::setProfile(config::Profile&) {
 }

@@ -28,21 +28,26 @@
 
 namespace logid {
     namespace defaults {
+        // Fallback values used when config files omit a setting.
         static constexpr double io_timeout = 500;
         static constexpr int workers = 4;
         static constexpr int gesture_threshold = 50;
     }
 
+    // Owns the parsed configuration, keeps it in the generated schema type,
+    // and exposes a small IPC surface for saving changes back to disk.
     class Configuration : public config::Config {
     public:
         explicit Configuration(std::string config_file);
 
         Configuration();
 
-        // Reloading is not safe, references will be invalidated
+        // Reloading is not safe, references will be invalidated.
         //void reload();
         void save();
 
+        // The daemon only exposes one config action over IPC: saving the current
+        // in-memory state back to the config file on disk.
         class IPC : public ipcgull::interface {
         public:
             explicit IPC(Configuration* config);

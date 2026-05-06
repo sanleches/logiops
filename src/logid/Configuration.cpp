@@ -16,6 +16,14 @@
  *
  */
 
+/*
+ * File: Configuration.cpp
+ *
+ * Runtime configuration loader and saver. This module reads the libconfig file
+ * into the generated schema-backed runtime model, keeps defaults in place when
+ * values are missing, and exposes the config save path over IPC.
+ */
+
 #include <Configuration.h>
 #include <util/log.h>
 #include <utility>
@@ -26,6 +34,10 @@ using namespace logid;
 using namespace libconfig;
 using namespace logid::config;
 
+// Purpose: Load runtime configuration from disk.
+// Inputs: Config file path.
+// Outputs: Populated configuration state or parse/load exceptions.
+// Used by: daemon startup.
 Configuration::Configuration(std::string config_file) :
         _config_file(std::move(config_file)) {
     if (std::filesystem::exists(_config_file)) {
@@ -41,6 +53,8 @@ Configuration::Configuration(std::string config_file) :
             throw;
         }
 
+        // Copy the parsed libconfig tree into the generated runtime schema
+        // object so runtime access works through the typed config model.
         Config::operator=(get<Config>(_config.getRoot()));
     } else {
         logPrintf(INFO, "Config file does not exist, using empty config.");
@@ -54,7 +68,12 @@ Configuration::Configuration() {
     devices.emplace();
 }
 
+// Purpose: Serialize the current runtime config back to disk.
+// Inputs: None.
+// Outputs: The config file is updated with runtime state.
+// Used by: IPC `Save`.
 void Configuration::save() {
+    // libconfig writes from its own tree, so synchronize it from the schema object first.
     config::set(_config.getRoot(), *this);
     try {
         _config.writeFile(_config_file.c_str());
@@ -69,6 +88,10 @@ void Configuration::save() {
     }
 }
 
+// Purpose: Expose the config save action over IPC.
+// Inputs: Configuration object.
+// Outputs: `Save` method on the config interface.
+// Used by: client persistence flows.
 Configuration::IPC::IPC(Configuration* config) :
         ipcgull::interface(SERVICE_ROOT_NAME ".Config", {
                 {"Save", {config, &Configuration::save}}

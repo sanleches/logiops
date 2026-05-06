@@ -5,6 +5,7 @@ set(CMAKE_INSTALL_PREFIX /usr)
 project(logiops)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# Keep warnings visible in all normal builds.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_NONE "${CMAKE_CXX_FLAGS_NONE} -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -Wall -Wextra")
@@ -16,7 +17,8 @@ option(USE_USER_BUS "Uses user bus" OFF)
 
 find_package(Git)
 
-# Set version number and update submodules
+# Derive a version string from git when possible, otherwise fall back to version.txt.
+# The submodule update keeps the embedded ipcgull copy in sync for local builds.
 if(EXISTS ${PROJECT_SOURCE_DIR}/.git AND GIT_FOUND)
     execute_process(COMMAND ${GIT_EXECUTABLE} describe --tags
          OUTPUT_VARIABLE LOGIOPS_VERSION
@@ -56,5 +58,6 @@ if(USE_USER_BUS)
     add_definitions(-DUSE_USER_BUS)
 endif()
 
+# Build the IPC library first, then the daemon.
 add_subdirectory(src/ipcgull)
 add_subdirectory(src/logid)

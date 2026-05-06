@@ -15,6 +15,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+/*
+ * File: GestureAction.cpp
+ *
+ * Gesture action controller. This module turns raw movement into directional
+ * gestures, manages per-direction sub-actions, and exposes the gesture tree
+ * over IPC so callers can inspect and edit gesture mappings at runtime.
+ */
+
 #include <actions/GestureAction.h>
 #include <backend/hidpp20/features/ReprogControls.h>
 #include <util/log.h>
@@ -24,8 +32,16 @@ using namespace logid::actions;
 using namespace logid;
 using namespace logid::backend;
 
+// Purpose: Name the IPC interface for this action.
+// Inputs: None.
+// Outputs: Static interface name string.
+// Used by: action construction.
 const char* GestureAction::interface_name = "Gesture";
 
+// Purpose: Convert a direction string to the internal enum.
+// Inputs: Direction text.
+// Outputs: Direction enum or exception.
+// Used by: gesture config parsing.
 GestureAction::Direction GestureAction::toDirection(std::string direction) {
     std::transform(direction.begin(), direction.end(), direction.begin(),
                    ::tolower);
@@ -43,6 +59,10 @@ GestureAction::Direction GestureAction::toDirection(std::string direction) {
         throw std::invalid_argument("direction");
 }
 
+// Purpose: Convert a direction enum to IPC text.
+// Inputs: Direction enum.
+// Outputs: Direction string.
+// Used by: IPC and config serialization.
 std::string GestureAction::fromDirection(Direction direction) {
     switch (direction) {
         case Up:
@@ -61,6 +81,10 @@ std::string GestureAction::fromDirection(Direction direction) {
     throw InvalidGesture();
 }
 
+// Purpose: Convert raw motion into the most likely cardinal direction.
+// Inputs: X/Y deltas.
+// Outputs: A dominant direction enum.
+// Used by: gesture release resolution.
 GestureAction::Direction GestureAction::toDirection(int32_t x, int32_t y) {
     if (x >= 0 && y >= 0)
         return x >= y ? Right : Down;
@@ -72,6 +96,10 @@ GestureAction::Direction GestureAction::toDirection(int32_t x, int32_t y) {
         return x <= -y ? Up : Right;
 }
 
+// Purpose: Build the gesture tree and restore configured gestures.
+// Inputs: Device, gesture config, and parent IPC node.
+// Outputs: Gesture action with child gesture nodes.
+// Used by: gesture button mappings.
 GestureAction::GestureAction(Device* dev, config::GestureAction& config,
                              const std::shared_ptr<ipcgull::node>& parent) :
         Action(dev, interface_name,
@@ -105,6 +133,10 @@ GestureAction::GestureAction(Device* dev, config::GestureAction& config,
     }
 }
 
+// Purpose: Start a new gesture sequence.
+// Inputs: None.
+// Outputs: All sub-gestures are pressed and reset.
+// Used by: button press handling.
 void GestureAction::press() {
     std::shared_lock lock(_config_mutex);
 
@@ -114,6 +146,10 @@ void GestureAction::press() {
         gesture.second->press(false);
 }
 
+// Purpose: Resolve and release the winning gesture on button release.
+// Inputs: None.
+// Outputs: One or more gesture releases according to threshold logic.
+// Used by: button release handling.
 void GestureAction::release() {
     std::shared_lock lock(_config_mutex);
 
@@ -148,6 +184,10 @@ void GestureAction::release() {
     }
 }
 
+// Purpose: Feed motion into the directional gesture detectors.
+// Inputs: Relative X/Y deltas.
+// Outputs: Gesture movement callbacks and updated totals.
+// Used by: motion reports.
 void GestureAction::move(int16_t x, int16_t y) {
     std::shared_lock lock(_config_mutex);
 
@@ -217,11 +257,19 @@ void GestureAction::move(int16_t x, int16_t y) {
     _y = new_y;
 }
 
+// Purpose: Keep the control diverted while gesture handling is active.
+// Inputs: None.
+// Outputs: Reprog flag bits.
+// Used by: hardware remapping.
 uint8_t GestureAction::reprogFlags() const {
     return (hidpp20::ReprogControls::TemporaryDiverted |
             hidpp20::ReprogControls::RawXYDiverted);
 }
 
+// Purpose: Replace or create the gesture implementation for one direction.
+// Inputs: Direction, gesture type, and config value.
+// Outputs: Directional gesture object updated in place.
+// Used by: IPC `SetGesture`.
 void GestureAction::setGesture(const std::string& direction, const std::string& type) {
     std::unique_lock lock(_config_mutex);
 

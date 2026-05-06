@@ -26,6 +26,7 @@
 #include <memory>
 
 namespace logid::backend::hidpp20 {
+    // HID++ feature family for remappable controls and diverted events.
     class ReprogControls : public Feature {
     public:
         enum Function {
@@ -83,29 +84,40 @@ namespace logid::backend::hidpp20 {
 
         [[nodiscard]] virtual bool supportsRawXY() { return false; }
 
+        // Bind the remapping feature to a device.
         explicit ReprogControls(Device* dev);
 
+        // Read the number of controls exposed by the device.
         [[nodiscard]] virtual uint8_t getControlCount();
 
+        // Read metadata for one control index.
         [[nodiscard]] virtual ControlInfo getControlInfo(uint8_t cid);
 
+        // Look up control metadata by control ID.
         [[nodiscard]] virtual ControlInfo getControlIdInfo(uint16_t cid);
 
+        // Build the control-ID map lazily.
         virtual void initCidMap();
 
+        // Return the cached control table.
         [[nodiscard]] const std::map<uint16_t, ControlInfo>& getControls() const;
 
         // Only controlId and flags will be set
+        // Read the current divert flags for one control.
         [[maybe_unused]]
         [[nodiscard]] virtual ControlInfo getControlReporting(uint16_t cid);
 
         // Only controlId (for remap) and flags will be read
+        // Write the divert flags for one control.
         virtual void setControlReporting(uint16_t cid, ControlInfo info);
 
+        // Decode a diverted button event into control IDs.
         [[nodiscard]] static std::set<uint16_t> divertedButtonEvent(const hidpp::Report& report);
 
+        // Decode a diverted raw-XY event into coordinates.
         [[nodiscard]] static Move divertedRawXYEvent(const hidpp::Report& report);
 
+        // Try the newest remapping implementation the device supports.
         [[nodiscard]] static std::shared_ptr<ReprogControls> autoVersion(Device* dev);
 
     protected:
@@ -122,6 +134,7 @@ namespace logid::backend::hidpp20 {
 
         [[nodiscard]] uint16_t getID() override { return ID; }
 
+        // Bind the V2 remapping feature to a device.
         explicit ReprogControlsV2(Device* dev);
 
     protected:
@@ -134,6 +147,7 @@ namespace logid::backend::hidpp20 {
 
         [[nodiscard]] uint16_t getID() override { return ID; }
 
+        // Bind the V2.2 remapping feature to a device.
         explicit ReprogControlsV2_2(Device* dev);
 
     protected:
@@ -146,6 +160,7 @@ namespace logid::backend::hidpp20 {
 
         [[nodiscard]] uint16_t getID() override { return ID; }
 
+        // Bind the V3 remapping feature to a device.
         explicit ReprogControlsV3(Device* dev);
 
     protected:
@@ -158,12 +173,16 @@ namespace logid::backend::hidpp20 {
 
         [[nodiscard]] uint16_t getID() final { return ID; }
 
+        // V4 adds raw-XY diversion support.
         [[nodiscard]] bool supportsRawXY() override { return true; }
 
+        // Read the current control reporting flags.
         [[nodiscard]] ControlInfo getControlReporting(uint16_t cid) override;
 
+        // Write the current control reporting flags.
         void setControlReporting(uint16_t cid, ControlInfo info) override;
 
+        // Bind the V4 remapping feature to a device.
         explicit ReprogControlsV4(Device* dev);
 
     protected:
